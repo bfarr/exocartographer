@@ -1,6 +1,8 @@
 import healpy as hp
 import george as gg
 import numpy as np
+import scipy.linalg as sl
+
 
 def gaussian_cov(times, nside, lambda_spatial, lambda_time, nest=False):
     r"""Returns the covariance matrix (scaled to unit diagonal) for the
@@ -12,7 +14,7 @@ def gaussian_cov(times, nside, lambda_spatial, lambda_time, nest=False):
 
     where :math:`\theta_{ij}` is the great-circle angular distance
     between the centres of pixels :math:`i` and :math:`j`, and
-    :math:`t_{ij}` is the time between the observations of pixels.  
+    :math:`t_{ij}` is the time between the observations of pixels.
 
     :param times: Observation times.
 
@@ -38,34 +40,78 @@ def gaussian_cov(times, nside, lambda_spatial, lambda_time, nest=False):
     n = times.shape[0]*npix
 
     inds = np.arange(0, npix)
-    x,y,z = hp.pix2vec(nside, inds, nest=nest)
+    x, y, z = hp.pix2vec(nside, inds, nest=nest)
 
-    vecs = np.column_stack((x,y,z))
+    vecs = np.column_stack((x, y, z))
 
-    spatial_angles2 = np.sum(vecs[np.newaxis,:,:]*vecs[:,np.newaxis,:], axis=2)
+    spatial_angles2 = np.sum(vecs[np.newaxis, ...]*vecs[:, np.newaxis, :], axis=2)
     print spatial_angles2[(spatial_angles2 > 1.0) | (spatial_angles2 < -1.0)]
     spatial_angles2[spatial_angles2 > 1] = 1.0
     spatial_angles2[spatial_angles2 < -1] = -1.0
     spatial_angles2 = np.square(np.arccos(spatial_angles2))
 
-    time_diff2 = np.square(times[np.newaxis,:] - times[:,np.newaxis])
+    time_diff2 = np.square(times[np.newaxis, :] - times[:, np.newaxis])
 
     scaled_distance2 = time_diff2[:,np.newaxis, :, np.newaxis]/(lambda_time*lambda_time) + spatial_angles2[np.newaxis, :, np.newaxis, :]/(lambda_spatial*lambda_spatial)
 
-    return np.exp(-scaled_distance2/2.0).reshape((n,n))
-    
-def draw_data_cube(times, nside, mu, sigma, lambda_spatial, lambda_time, nest=False):
+    return np.exp(-np.sqrt(scaled_distance2)).reshape((n, n))
+
+
+def cloud_logprior(times, hpmap_cube, mu, sigma,
+                   lambda_time, lambda_spatial, nest=False):
+    """Returns the GP prior on the time-varying map with exponential covariance
+    function.
+
+    :param hpmap_cube: Data cube containing a time-varying Healpix map, with
+                        time along the first axis, on which the prior is to be
+                        evaluated.
+
+    :param mu: Mean of the GP
+
+    :param sigma: Standard deviation at zero time and angular separation.
+
+    :param lambda_time: Temporal correlation scale.
+
+    :param lambda_spacial: Spacial correlation scale.
+
+    :param nest: The ordering of the healpix map.
+
+    """
+
+    nside = hp.npix2nside(hpmap_cube.shape[1])
+    n = np.product(hpmap_cube.shape)
+
+    cov = sigma*sigma*gaussian_cov(times, nside, lambda_spatial,
+                                   lambda_time, nest=nest)
+    cho_factor, lower = sl.cho_factor(cov)
+
+    # Convert to GP parameter and calculate Jacobian
+    gp_data = np.log(hpmap_cube) - np.log(1-hpmap_cube)
+
+    x = np.array(gp_data - mu).flatten()
+    jacobian = np.sum(-np.log(hpmap_cube * (1. - hpmap_cube)))
+
+    logdet = np.sum(np.log(np.diag(cho_factor)))
+
+    lnprior = -0.5*n*np.log(2.0*np.pi) - logdet + jacobian -\
+        0.5*np.dot(x, sl.cho_solve((cho_factor, lower), x))
+
+    return lnprior
+
+
+def draw_data_cube(times, nside, mu, sigma,
+                   lambda_spatial, lambda_time, nest=False):
     r"""Returns a ``(ntime, npix)`` data array of pixels drawn from the
     quasi-Gaussian process model described in :func:`gaussian_cov`.
     The model is quasi-Gaussian because each pixel's covering fraction
-    is derived from a process by 
+    is derived from a process by
 
     .. math::
 
       f = \frac{1}{1 + \exp(-x)}
 
     where :math:`x` is drawn from the Gaussian process, and :math:`f`
-    is the cloud covering fraction.  
+    is the cloud covering fraction.
 
     :param times: The observation times.
 
@@ -86,42 +132,46 @@ def draw_data_cube(times, nside, mu, sigma, lambda_spatial, lambda_time, nest=Fa
       from the GP model.
 
     """
-    cov = sigma*sigma*gaussian_cov(times, nside, lambda_spatial, lambda_time, nest=nest)
+    cov = sigma*sigma*gaussian_cov(times, nside,
+                                   lambda_spatial, lambda_time, nest=nest)
     mean = mu*np.ones(cov.shape[0])
 
     logit = np.random.multivariate_normal(mean=mean, cov=cov)
     data = 1.0/(1.0 + np.exp(-logit))
 
     return data.reshape((times.shape[0], hp.nside2npix(nside)))
-    
-def draw_data_cube_george(times, nside, mu, sigma, lambda_spatial, lambda_time, nest=False):
+
+
+def draw_data_cube_george(times, nside, mu, sigma,
+                          lambda_spatial, lambda_time, nest=False):
     """Like :func:`draw_data_cube`, but tries to use George (DFM's GP
     model based on Ambikasaran et al's HODLR solvers).  Currently,
     this breaks because there is no HODLR factorisation for the
     Cholesky decomposition needed to *draw* samples from the model.
 
     """
-    
+
     npix = hp.nside2npix(nside)
     n = times.shape[0]*npix
 
     inds = np.arange(0, npix)
-    x,y,z = hp.pix2vec(nside, inds, nest=nest)
+    x, y, z = hp.pix2vec(nside, inds, nest=nest)
 
-    vecs = np.column_stack((x,y,z))
+    vecs = np.column_stack((x, y, z))
 
     lambda_spatial = 2.0*(1-np.cos(lambda_spatial))
 
     pts = np.column_stack((np.tile(times, (vecs.shape[0],)),
                            np.tile(vecs, (times.shape[0], 1))))
 
-    metric = 1.0/np.array([lambda_time, lambda_spatial, lambda_spatial, lambda_spatial])
-    
+    metric = 1.0/np.array([lambda_time, lambda_spatial,
+                           lambda_spatial, lambda_spatial])
+
     kernel = sigma*sigma*gg.kernels.Matern32Kernel(metric, ndim=4)
     gp = gg.GP(kernel, solver=gg.HODLRSolver)
 
     gp.compute(pts)
-    
+
     logit = gp.sample() + mu
 
     return 1.0/(1.0 + np.exp(-logit))
