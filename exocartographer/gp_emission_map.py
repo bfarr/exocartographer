@@ -1,4 +1,4 @@
-import george as gg
+import gp_map as gm
 import healpy as hp
 import numpy as np
 import scipy.linalg as sl
@@ -104,44 +104,13 @@ class EmissionMapPosterior(object):
 
         return log_intensity
 
-    def map_angular_distances(self):
-        vecs = hp.pix2vec(self.nside, np.arange(0, self.npix))
-        vecs = np.column_stack(vecs)
-
-        dot_prods = np.sum(vecs[np.newaxis, :, :]*vecs[:, np.newaxis, :], axis=2)
-        dot_prods[dot_prods > 1] = 1.0
-        dot_prods[dot_prods < -1] = -1.0
-        ang_distance = np.arccos(dot_prods)
-
-        return ang_distance
-    
-    def map_covariance(self, p):
-        p = self.to_params(p)
-
-        ang_distance = self.map_angular_distances()
-
-        sigma = self.sigma(p)
-        sp_scale = self.spatial_scale(p)
-        mu = p['mu']
-        
-        cov = sigma*sigma*np.exp(-np.square(ang_distance)/(2.0*sp_scale*sp_scale))
-
-        return cov
-
     def logmapprior(self, p):
         p = self.to_params(p)
 
-        cov = self.map_covariance(p)
+        sigma = self.sigma(p)
+        sp_scale = self.spatial_scale(p)
 
-        cho_factor, lower = sl.cho_factor(cov)
-
-        log_det = np.sum(np.log(np.diag(cho_factor)))
-
-        n = cov.shape[0]
-        
-        return -0.5*n*np.log(2.0*np.pi) - log_det \
-            - 0.5*np.dot(p['log_intensity_map'] - mu,
-                         sl.cho_solve((cho_factor, lower), p['log_intensity_map'] - mu))
+        return gm.map_logprior(p['log_intensity_map'], p['mu'], sigma, sp_scale)
 
     def logpdata(self, p):
         p = self.to_params(p)
