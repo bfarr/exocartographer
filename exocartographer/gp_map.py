@@ -36,7 +36,7 @@ def exp_cov(nside, lambda_angular, nest=False):
 
     return np.exp(-thetas / lambda_angular)
 
-def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
+def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False, smooth=False):
     """Returns the GP prior on the map with exponential covariance
     function.
 
