@@ -12,10 +12,12 @@ def exp_cov(nside, lambda_angular, nest=False):
 
     .. math::
 
-      C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( - \frac{\theta_{ij}}{\lambda} \right)
+      C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( - \frac{\theta_{ij}}{\lambda} \right) + \alpha \delta_{ij}
 
     where :math:`\theta_{ij}` is the great-circle angle between the
-    :math:`i` and :math:`j` pixel centres.
+    :math:`i` and :math:`j` pixel centres.  The parameter
+    :math:`\alpha` controls the relative amplitude of a (spatial)
+    white-noise term.
 
     :param nside: Healpix ``nside`` parameter.
 
@@ -36,7 +38,7 @@ def exp_cov(nside, lambda_angular, nest=False):
 
     return np.exp(-thetas / lambda_angular)
 
-def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False, smooth=False):
+def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
     """Returns the GP prior on the map with exponential covariance
     function.
 
@@ -59,8 +61,11 @@ def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False, smooth=False):
 
     x = hpmap - mu
 
-    cho_factor, lower = sl.cho_factor(cov)
+    try:
+        cho, lower = sl.cho_factor(cov)
+    except sl.LinAlgError:
+        return np.NINF
 
-    logdet = np.sum(np.log(np.diag(cho_factor)))
+    logdet = np.sum(np.log(np.diag(cho)))
 
-    return -0.5*n*np.log(2.0*np.pi) - logdet - 0.5*np.dot(x, sl.cho_solve((cho_factor, lower), x))
+    return -0.5*n*np.log(2.0*np.pi) - logdet - 0.5*np.dot(x, sl.cho_solve((cho, lower), x))
