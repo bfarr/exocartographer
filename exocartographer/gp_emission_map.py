@@ -74,7 +74,7 @@ class EmissionMapPosterior(object):
         p = self.to_params(p)
         return np.exp(p['log_spatial_scale'])
 
-    def intensity_series(self, p):
+    def visibility_series(self, p):
         p = self.to_params(p)
 
         per = self.period(p)        
@@ -100,9 +100,17 @@ class EmissionMapPosterior(object):
         # Zero out un-observable
         dot_products[dot_products < 0] = 0.0
 
-        log_intensity = np.logaddexp.reduce(np.log(dot_products) + p['log_intensity_map'][np.newaxis, :], axis=1)
+        return dot_products
 
-        return log_intensity
+    def spatial_intensity_series(self, p):
+        p = self.to_params(p)
+
+        dot_products = self.visibility_series(p)
+
+        return np.log(dot_products) + p['log_intensity_map'][np.newaxis, :]
+
+    def intensity_series(self, p):
+        return np.logaddexp.reduce(self.spatial_intensity_series(p), axis=1)
 
     def logmapprior(self, p):
         p = self.to_params(p)
