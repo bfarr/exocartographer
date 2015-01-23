@@ -80,7 +80,7 @@ class EmissionMapPosterior(object):
         per = self.period(p)        
         cos_theta = self.cos_theta(p)
 
-        phis = 2.0*np.pi*np.fmod(self.times, per)
+        phis = 2.0*np.pi/per*self.times
 
         ct = cos_theta
         st = np.sqrt(1.0 - ct*ct)
