@@ -55,7 +55,7 @@ def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
     nside = hp.npix2nside(hpmap.shape[0])
     n = hpmap.shape[0]
     
-    cov = sigma*sigma*exp_cov(nside, lambda_angular, nest=nest)
+    cov = sigma*sigma*np.eye(n)#exp_cov(nside, lambda_angular, nest=nest)
 
     x = hpmap - mu
 
@@ -65,5 +65,31 @@ def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
         return np.NINF
 
     logdet = np.sum(np.log(np.diag(cho)))
+    print logdet, np.sum(np.log(sl.eigvalsh(cov)))/2, sigma, np.diag(cho)
 
     return -0.5*n*np.log(2.0*np.pi) - logdet - 0.5*np.dot(x, sl.cho_solve((cho, lower), x))
+
+def draw_map(nside, mu, sigma, lambda_spatial, nest=False):
+    """Returns a map sampled from the Gaussian process with the given
+    parameters.
+
+    :param mu: The mean of the GP (constant on the sphere).
+
+    :param sigma: The standard deviation of the GP at zero angular
+      separation.
+
+    :param lambda_spatial: The angular correlation length of the
+      process (radians).
+
+    :param nest: Healpix map ordering.
+
+    :return: Healpix map drawn from the GP with the given parameters.
+
+    """
+
+    n = hp.nside2npix(nside)
+
+    cov = sigma*sigma*exp_cov(nside, lambda_spatial, nest=nest)
+    mean = mu*np.ones(n)
+
+    return np.random.multivariate_normal(mean, cov)
