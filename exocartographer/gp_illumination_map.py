@@ -76,6 +76,7 @@ class IlluminationMapPosterior(object):
     def dtype(self):
         return np.dtype([('mu', np.float),
                          ('log_sigma', np.float),
+                         ('log_wn_rel_amp', np.float),
                          ('log_spatial_scale', np.float),
                          ('t0', np.float),
                          ('log_rotation_period', np.float),
@@ -87,7 +88,7 @@ class IlluminationMapPosterior(object):
 
     @property
     def nparams(self):
-        return self.npix + 9
+        return self.npix + 10
 
     def to_params(self, p):
         return np.atleast_1d(p).view(self.dtype).squeeze()
@@ -160,9 +161,10 @@ class IlluminationMapPosterior(object):
         p = self.to_params(p)
 
         sigma = np.exp(p['log_sigma'])
+        wn_rel_amp = np.exp(p['log_wn_rel_amp'])
         lambda_spatial = np.exp(p['log_spatial_scale'])
 
-        return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, lambda_spatial)
+        return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
 
     def __call__(self, p):
         return self.log_pdata(p) + self.log_pmap(p)

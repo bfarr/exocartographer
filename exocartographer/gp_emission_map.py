@@ -46,6 +46,7 @@ class EmissionMapPosterior(object):
     def dtype(self):
         return np.dtype([('mu', np.float),
                          ('log_sigma', np.float),
+                         ('log_wn_rel_amp', np.float),
                          ('log_spatial_scale', np.float),
                          ('log_period', np.float),
                          ('logit_cos_theta', np.float),
@@ -116,6 +117,7 @@ class EmissionMapPosterior(object):
         p = self.to_params(p)
 
         sigma = self.sigma(p)
+        wn_rel_amp = np.exp(p['log_wn_rel_amp'])
         sp_scale = self.spatial_scale(p)
 
         return gm.map_logprior(p['log_intensity_map'], p['mu'], sigma, sp_scale)
