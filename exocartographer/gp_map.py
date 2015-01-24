@@ -6,7 +6,7 @@ import healpy as hp
 import numpy as np
 import scipy.linalg as sl
 
-def exp_cov(nside, lambda_angular, nest=False):
+def exp_cov(nside, wn_rel_amp, lambda_angular, nest=False):
     """Returns a covariance function for a healpix map with ``nside``
     using
 
@@ -34,12 +34,14 @@ def exp_cov(nside, lambda_angular, nest=False):
     
     thetas = np.arccos(dot_prods)
 
-    cov = np.exp(-thetas*thetas / (2.0*lambda_angular*lambda_angular))
+    cov = np.exp(-thetas*thetas/(2.0*lambda_angular*lambda_angular))
     cov[np.diag_indices(hp.nside2npix(nside))] = 1.0
+    cov[np.diag_indices(hp.nside2npix(nside))] += wn_rel_amp
+    cov /= (1.0 + wn_rel_amp)
 
     return cov
 
-def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
+def map_logprior(hpmap, mu, sigma, wn_rel_amp, lambda_angular, nest=False):
     """Returns the GP prior on the map with exponential covariance
     function.
 
@@ -58,20 +60,20 @@ def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
     nside = hp.npix2nside(hpmap.shape[0])
     n = hpmap.shape[0]
     
-    cov = sigma*sigma*exp_cov(nside, lambda_angular, nest=nest)
+    cov = sigma*sigma*exp_cov(nside, wn_rel_amp, lambda_angular, nest=nest)
 
     x = hpmap - mu
 
     try:
-        cho, lower = sl.cho_factor(cov)
+        chof, low = sl.cho_factor(cov)
     except sl.LinAlgError:
         return np.NINF
 
-    logdet = np.sum(np.log(np.diag(cho)))
+    logdet = np.sum(np.log(np.diag(chof)))
 
-    return -0.5*n*np.log(2.0*np.pi) - logdet - 0.5*np.dot(x, sl.cho_solve((cho, lower), x))
+    return -0.5*n*np.log(2*np.pi) - logdet - 0.5*np.dot(x, sl.cho_solve((chof, low), x))
 
-def draw_map(nside, mu, sigma, lambda_spatial, nest=False):
+def draw_map(nside, mu, sigma, wn_rel_amp, lambda_spatial, nest=False):
     """Returns a map sampled from the Gaussian process with the given
     parameters.
 
@@ -91,7 +93,7 @@ def draw_map(nside, mu, sigma, lambda_spatial, nest=False):
 
     n = hp.nside2npix(nside)
 
-    cov = sigma*sigma*exp_cov(nside, lambda_spatial, nest=nest)
+    cov = sigma*sigma*exp_cov(nside, wn_rel_amp, lambda_spatial, nest=nest)
     mean = mu*np.ones(n)
 
     return np.random.multivariate_normal(mean, cov)
