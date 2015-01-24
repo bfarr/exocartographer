@@ -4,11 +4,12 @@ import numpy as np
 import scipy.linalg as sl
 import scipy.stats as ss
 
-def logit(x):
-    return np.log(x) - np.log(1-x)
+def logit(x, low=0, high=1):
+    return np.log(x-low) - np.log(high-x)
 
-def inv_logit(y):
-    return 1.0/(1.0 + np.exp(-y))
+def inv_logit(y, low=0, high=1):
+    ey = np.exp(y)
+    return low/(1+ey) + high/(1+1/ey)
 
 class EmissionMapPosterior(object):
     def __init__(self, times, intensity, sigma_intensity, nside=4):
@@ -46,8 +47,8 @@ class EmissionMapPosterior(object):
     def dtype(self):
         return np.dtype([('mu', np.float),
                          ('log_sigma', np.float),
-                         ('log_wn_rel_amp', np.float),
-                         ('log_spatial_scale', np.float),
+                         ('logit_wn_rel_amp', np.float),
+                         ('logit_spatial_scale', np.float),
                          ('log_period', np.float),
                          ('logit_cos_theta', np.float),
                          ('log_intensity_map', np.float, self.npix)])
@@ -73,7 +74,14 @@ class EmissionMapPosterior(object):
 
     def spatial_scale(self, p):
         p = self.to_params(p)
-        return np.exp(p['log_spatial_scale'])
+        resol = hp.nside2resol(self.nside)
+        return inv_logit(p['logit_spatial_scale'],
+                         low=resol/3,
+                         high=3*np.pi)
+
+    def wn_rel_amp(self, p):
+        p = self.to_params(p)
+        return inv_logit(p['logit_wn_rel_amp'], low=0.01, high=100)
 
     def visibility_series(self, p):
         p = self.to_params(p)
@@ -113,33 +121,11 @@ class EmissionMapPosterior(object):
     def intensity_series(self, p):
         return np.logaddexp.reduce(self.spatial_intensity_series(p), axis=1)
 
-    def log_prior(self, p):
-        p = self.to_params(p)
-
-        lp = 0.0
-        
-        log_theta_pix = np.log(hp.nside2resol(self.nside))
-        log_pi = np.log(np.pi)
-
-        if p['log_spatial_scale'] < log_theta_pix:
-            lp -= 0.5*np.square(p['log_spatial_scale'] - log_theta_pix)
-        elif p['log_spatial_scale'] > log_pi:
-            lp -= 0.5*np.square(p['log_spatial_scale'] - log_pi)
-
-        log_small = np.log(1e-2)
-        log_big = np.log(1e2)
-        if p['log_wn_rel_amp'] < log_small:
-            lp -= 0.5*np.square(p['log_wn_rel_amp'] - log_small)
-        elif p['log_wn_rel_amp'] > log_big:
-            lp -= 0.5*np.square(p['log_wn_rel_amp'] - log_big)
-
-        return lp        
-
     def logmapprior(self, p):
         p = self.to_params(p)
 
         sigma = self.sigma(p)
-        wn_rel_amp = np.exp(p['log_wn_rel_amp'])
+        wn_rel_amp = inv_logit(p['logit_wn_rel_amp'], low=0.01, high=100)
         sp_scale = self.spatial_scale(p)
 
         return gm.map_logprior(p['log_intensity_map'], p['mu'], sigma, sp_scale)
@@ -152,7 +138,7 @@ class EmissionMapPosterior(object):
         return np.sum(ss.norm.logpdf(self.intensity, loc=log_ints, scale=self.sigma_intensity))
 
     def __call__(self, p):
-        lp = self.logpdata(p) + self.logmapprior(p) + self.log_prior(p)
+        lp = self.logpdata(p) + self.logmapprior(p)
         
         return lp
         

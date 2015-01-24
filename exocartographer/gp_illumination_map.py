@@ -76,8 +76,8 @@ class IlluminationMapPosterior(object):
     def dtype(self):
         return np.dtype([('mu', np.float),
                          ('log_sigma', np.float),
-                         ('log_wn_rel_amp', np.float),
-                         ('log_spatial_scale', np.float),
+                         ('logit_wn_rel_amp', np.float),
+                         ('logit_spatial_scale', np.float),
                          ('t0', np.float),
                          ('log_rotation_period', np.float),
                          ('log_orbital_period', np.float),
@@ -92,6 +92,16 @@ class IlluminationMapPosterior(object):
 
     def to_params(self, p):
         return np.atleast_1d(p).view(self.dtype).squeeze()
+
+    def spatial_scale(self, p):
+        p = self.to_params(p)
+        resol = hp.nside2resol(self.nside)
+        return inv_logit(p['logit_spatial_scale'], low=resol/3, high=3*np.pi)
+
+    def wn_rel_amp(self, p):
+        p = self.to_params(p)
+
+        return inv_logit(p['logit_wn_rel_amp'], low=0.01, high=100)
 
     def lightcurve(self, p):
         p = self.to_params(p)
@@ -150,28 +160,6 @@ class IlluminationMapPosterior(object):
 
         return np.logaddexp.reduce(p['log_albedo_map'] + np.log(cos_factors), axis=1)
 
-    def log_prior(self, p):
-        p = self.to_params(p)
-
-        lp = 0.0
-        
-        log_theta_pix = np.log(hp.nside2resol(self.nside))
-        log_pi = np.log(np.pi)
-
-        if p['log_spatial_scale'] < log_theta_pix:
-            lp -= 0.5*np.square(p['log_spatial_scale'] - log_theta_pix)
-        elif p['log_spatial_scale'] > log_pi:
-            lp -= 0.5*np.square(p['log_spatial_scale'] - log_pi)
-
-        log_small = np.log(1e-2)
-        log_big = np.log(1e2)
-        if p['log_wn_rel_amp'] < log_small:
-            lp -= 0.5*np.square(p['log_wn_rel_amp'] - log_small)
-        elif p['log_wn_rel_amp'] > log_big:
-            lp -= 0.5*np.square(p['log_wn_rel_amp'] - log_big)
-
-        return lp        
-    
     def log_pdata(self, p):
         p = self.to_params(p)
 
@@ -183,10 +171,10 @@ class IlluminationMapPosterior(object):
         p = self.to_params(p)
 
         sigma = np.exp(p['log_sigma'])
-        wn_rel_amp = np.exp(p['log_wn_rel_amp'])
-        lambda_spatial = np.exp(p['log_spatial_scale'])
+        wn_rel_amp = self.wn_rel_amp(p)
+        lambda_spatial = self.spatial_scale(p)
 
         return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
 
     def __call__(self, p):
-        return self.log_pdata(p) + self.log_pmap(p) + self.log_prior(p)
+        return self.log_pdata(p) + self.log_pmap(p)
