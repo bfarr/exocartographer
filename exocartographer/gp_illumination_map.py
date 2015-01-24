@@ -150,6 +150,28 @@ class IlluminationMapPosterior(object):
 
         return np.logaddexp.reduce(p['log_albedo_map'] + np.log(cos_factors), axis=1)
 
+    def log_prior(self, p):
+        p = self.to_params(p)
+
+        lp = 0.0
+        
+        log_theta_pix = np.log(hp.nside2resol(self.nside))
+        log_pi = np.log(np.pi)
+
+        if p['log_spatial_scale'] < log_theta_pix:
+            lp -= np.square(p['log_spatial_scale'] - log_theta_pix)
+        elif p['log_spatial_scale'] > log_pi:
+            lp -= np.square(p['log_spatial_scale'] - log_pi)
+
+        log_small = np.log(1e-2)
+        log_big = np.log(1e2)
+        if p['log_wn_rel_amp'] < log_small:
+            lp -= np.square(p['log_wn_rel_amp'] - log_small)
+        elif p['log_wn_rel_amp'] > log_big:
+            lp -= np.square(p['log_wn_rel_amp'] - log_big)
+
+        return lp        
+    
     def log_pdata(self, p):
         p = self.to_params(p)
 
@@ -167,4 +189,4 @@ class IlluminationMapPosterior(object):
         return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
 
     def __call__(self, p):
-        return self.log_pdata(p) + self.log_pmap(p)
+        return self.log_pdata(p) + self.log_pmap(p) + self.log_prior(p)

@@ -113,6 +113,28 @@ class EmissionMapPosterior(object):
     def intensity_series(self, p):
         return np.logaddexp.reduce(self.spatial_intensity_series(p), axis=1)
 
+    def log_prior(self, p):
+        p = self.to_params(p)
+
+        lp = 0.0
+        
+        log_theta_pix = np.log(hp.nside2resol(self.nside))
+        log_pi = np.log(np.pi)
+
+        if p['log_spatial_scale'] < log_theta_pix:
+            lp -= np.square(p['log_spatial_scale'] - log_theta_pix)
+        elif p['log_spatial_scale'] > log_pi:
+            lp -= np.square(p['log_spatial_scale'] - log_pi)
+
+        log_small = np.log(1e-2)
+        log_big = np.log(1e2)
+        if p['log_wn_rel_amp'] < log_small:
+            lp -= np.square(p['log_wn_rel_amp'] - log_small)
+        elif p['log_wn_rel_amp'] > log_big:
+            lp -= np.square(p['log_wn_rel_amp'] - log_big)
+
+        return lp        
+
     def logmapprior(self, p):
         p = self.to_params(p)
 
@@ -130,7 +152,7 @@ class EmissionMapPosterior(object):
         return np.sum(ss.norm.logpdf(self.intensity, loc=log_ints, scale=self.sigma_intensity))
 
     def __call__(self, p):
-        lp = self.logpdata(p) + self.logmapprior(p)
+        lp = self.logpdata(p) + self.logmapprior(p) + self.log_prior(p)
         
         return lp
         
