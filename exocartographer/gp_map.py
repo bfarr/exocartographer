@@ -58,7 +58,7 @@ def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
     nside = hp.npix2nside(hpmap.shape[0])
     n = hpmap.shape[0]
     
-    cov = sigma*sigma*np.eye(n)#exp_cov(nside, lambda_angular, nest=nest)
+    cov = sigma*sigma*exp_cov(nside, lambda_angular, nest=nest)
 
     x = hpmap - mu
 
