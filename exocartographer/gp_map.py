@@ -12,12 +12,10 @@ def exp_cov(nside, lambda_angular, nest=False):
 
     .. math::
 
-      C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( - \frac{\theta_{ij}}{\lambda} \right) + \alpha \delta_{ij}
+      C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( - \frac{\theta_{ij}}{\lambda} \right)
 
     where :math:`\theta_{ij}` is the great-circle angle between the
-    :math:`i` and :math:`j` pixel centres.  The parameter
-    :math:`\alpha` controls the relative amplitude of a (spatial)
-    white-noise term.
+    :math:`i` and :math:`j` pixel centres.  
 
     :param nside: Healpix ``nside`` parameter.
 
