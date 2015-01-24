@@ -159,16 +159,16 @@ class IlluminationMapPosterior(object):
         log_pi = np.log(np.pi)
 
         if p['log_spatial_scale'] < log_theta_pix:
-            lp -= np.square(p['log_spatial_scale'] - log_theta_pix)
+            lp -= 0.5*np.square(p['log_spatial_scale'] - log_theta_pix)
         elif p['log_spatial_scale'] > log_pi:
-            lp -= np.square(p['log_spatial_scale'] - log_pi)
+            lp -= 0.5*np.square(p['log_spatial_scale'] - log_pi)
 
         log_small = np.log(1e-2)
         log_big = np.log(1e2)
         if p['log_wn_rel_amp'] < log_small:
-            lp -= np.square(p['log_wn_rel_amp'] - log_small)
+            lp -= 0.5*np.square(p['log_wn_rel_amp'] - log_small)
         elif p['log_wn_rel_amp'] > log_big:
-            lp -= np.square(p['log_wn_rel_amp'] - log_big)
+            lp -= 0.5*np.square(p['log_wn_rel_amp'] - log_big)
 
         return lp        
     
