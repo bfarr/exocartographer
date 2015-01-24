@@ -34,7 +34,10 @@ def exp_cov(nside, lambda_angular, nest=False):
     
     thetas = np.arccos(dot_prods)
 
-    return np.exp(-thetas / lambda_angular)
+    cov = np.exp(-thetas*thetas / (2.0*lambda_angular*lambda_angular))
+    cov[np.diag_indices(hp.nside2npix(nside))] = 1.0
+
+    return cov
 
 def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
     """Returns the GP prior on the map with exponential covariance
@@ -65,7 +68,6 @@ def map_logprior(hpmap, mu, sigma, lambda_angular, nest=False):
         return np.NINF
 
     logdet = np.sum(np.log(np.diag(cho)))
-    print logdet, np.sum(np.log(sl.eigvalsh(cov)))/2, sigma, np.diag(cho)
 
     return -0.5*n*np.log(2.0*np.pi) - logdet - 0.5*np.dot(x, sl.cho_solve((cho, lower), x))
 
