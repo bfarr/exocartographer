@@ -10,6 +10,9 @@ def inv_logit(y, low=0, high=1):
     ey = np.exp(y)
     return low/(1.0 + ey) + high/(1.0 + 1.0/ey)
 
+def flat_logit_log_prior(y, low=0, high=1):
+    return np.log(high-low) + y - 2.0*np.log1p(np.exp(y))
+
 def quaternion_multiply(qa, qb):
     result = np.zeros(qa.shape)
 
@@ -90,18 +93,38 @@ class IlluminationMapPosterior(object):
     def nparams(self):
         return self.npix + 10
 
+    @property
+    def wn_low(self):
+        return 0.01
+
+    @property
+    def wn_high(self):
+        return 100.0
+
+    @property
+    def spatial_scale_low(self):
+        return hp.nside2resol(self.nside)/3.0
+
+    @property
+    def spatial_scale_high(self):
+        return 3.0*np.pi
+
     def to_params(self, p):
         return np.atleast_1d(p).view(self.dtype).squeeze()
 
     def spatial_scale(self, p):
         p = self.to_params(p)
-        resol = hp.nside2resol(self.nside)
-        return inv_logit(p['logit_spatial_scale'], low=resol/3, high=3*np.pi)
+
+        return inv_logit(p['logit_spatial_scale'],
+                         low=self.spatial_scale_low,
+                         high=self.spatial_scale_high)
 
     def wn_rel_amp(self, p):
         p = self.to_params(p)
 
-        return inv_logit(p['logit_wn_rel_amp'], low=0.01, high=100)
+        return inv_logit(p['logit_wn_rel_amp'],
+                         low=self.wn_low,
+                         high=self.wn_high)
 
     def lightcurve(self, p):
         p = self.to_params(p)
@@ -160,6 +183,21 @@ class IlluminationMapPosterior(object):
 
         return np.logaddexp.reduce(p['log_albedo_map'] + np.log(cos_factors), axis=1)
 
+    def log_prior(self, p):
+        p = self.to_params(p)
+
+        lp = 0.0
+
+        lp += flat_logit_log_prior(p['logit_wn_rel_amp'],
+                                   low=self.wn_low,
+                                   high=self.wn_high)
+
+        lp += flat_logit_log_prior(p['logit_spatial_scale'],
+                                   low=self.spatial_scale_low,
+                                   high=self.spatial_scale_high)
+
+        return lp
+    
     def log_pdata(self, p):
         p = self.to_params(p)
 
@@ -177,4 +215,4 @@ class IlluminationMapPosterior(object):
         return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
 
     def __call__(self, p):
-        return self.log_pdata(p) + self.log_pmap(p)
+        return self.log_pdata(p) + self.log_pmap(p) + self.log_prior(p)
