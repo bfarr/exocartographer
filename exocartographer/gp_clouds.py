@@ -1,5 +1,4 @@
 import healpy as hp
-import george as gg
 import numpy as np
 import scipy.linalg as sl
 
@@ -140,38 +139,3 @@ def draw_data_cube(times, nside, mu, sigma,
     data = 1.0/(1.0 + np.exp(-logit))
 
     return data.reshape((times.shape[0], hp.nside2npix(nside)))
-
-
-def draw_data_cube_george(times, nside, mu, sigma,
-                          lambda_spatial, lambda_time, nest=False):
-    """Like :func:`draw_data_cube`, but tries to use George (DFM's GP
-    model based on Ambikasaran et al's HODLR solvers).  Currently,
-    this breaks because there is no HODLR factorisation for the
-    Cholesky decomposition needed to *draw* samples from the model.
-
-    """
-
-    npix = hp.nside2npix(nside)
-    n = times.shape[0]*npix
-
-    inds = np.arange(0, npix)
-    x, y, z = hp.pix2vec(nside, inds, nest=nest)
-
-    vecs = np.column_stack((x, y, z))
-
-    lambda_spatial = 2.0*(1-np.cos(lambda_spatial))
-
-    pts = np.column_stack((np.tile(times, (vecs.shape[0],)),
-                           np.tile(vecs, (times.shape[0], 1))))
-
-    metric = 1.0/np.array([lambda_time, lambda_spatial,
-                           lambda_spatial, lambda_spatial])
-
-    kernel = sigma*sigma*gg.kernels.Matern32Kernel(metric, ndim=4)
-    gp = gg.GP(kernel, solver=gg.HODLRSolver)
-
-    gp.compute(pts)
-
-    logit = gp.sample() + mu
-
-    return 1.0/(1.0 + np.exp(-logit))
