@@ -16,5 +16,5 @@ setup(
     url='https://github.com/bfarr/exocartographer',
     include_package_data=True,
     packages=['exocartographer'],
-    install_requires=['numpy', 'scipy'],
+    install_requires=['numpy', 'healpy', 'scipy'],
 )
