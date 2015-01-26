@@ -55,7 +55,7 @@ class EmissionMapPosterior(object):
 
     @property
     def nparams(self):
-        return 5 + self.npix
+        return 6 + self.npix
 
     def to_params(self, p):
         return np.atleast_1d(p).view(self.dtype).squeeze()
@@ -67,7 +67,7 @@ class EmissionMapPosterior(object):
     def period(self, p):
         p = self.to_params(p)
         return np.exp(p['log_period'])
-    
+
     def sigma(self, p):
         p = self.to_params(p)
         return np.exp(p['log_sigma'])
@@ -86,7 +86,7 @@ class EmissionMapPosterior(object):
     def visibility_series(self, p):
         p = self.to_params(p)
 
-        per = self.period(p)        
+        per = self.period(p)
         cos_theta = self.cos_theta(p)
 
         phis = 2.0*np.pi/per*self.times
@@ -128,7 +128,7 @@ class EmissionMapPosterior(object):
         wn_rel_amp = inv_logit(p['logit_wn_rel_amp'], low=0.01, high=100)
         sp_scale = self.spatial_scale(p)
 
-        return gm.map_logprior(p['log_intensity_map'], p['mu'], sigma, sp_scale)
+        return gm.map_logprior(p['log_intensity_map'], p['mu'], sigma, wn_rel_amp, sp_scale)
 
     def logpdata(self, p):
         p = self.to_params(p)
@@ -139,6 +139,5 @@ class EmissionMapPosterior(object):
 
     def __call__(self, p):
         lp = self.logpdata(p) + self.logmapprior(p)
-        
+
         return lp
-        
