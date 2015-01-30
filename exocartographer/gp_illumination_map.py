@@ -2,16 +2,7 @@ import gp_map as gm
 import healpy as hp
 import numpy as np
 import scipy.stats as ss
-
-def logit(x, low=0, high=1):
-    return np.log(x-low) - np.log(high-x)
-
-def inv_logit(y, low=0, high=1):
-    ey = np.exp(y)
-    return low/(1.0 + ey) + high/(1.0 + 1.0/ey)
-
-def flat_logit_log_prior(y, low=0, high=1):
-    return np.log(high-low) + y - 2.0*np.log1p(np.exp(y))
+from util import logit, inv_logit, flat_logit_log_prior
 
 def quaternion_multiply(qa, qb):
     result = np.zeros(qa.shape)

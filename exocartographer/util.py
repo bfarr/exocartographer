@@ -1,5 +1,30 @@
 import numpy as np
 
+def logit(x, low=0, high=1):
+    r"""Returns the logit function at ``x``.  Logit is defined as
+
+    .. math::
+
+      \mathrm{logit}\, x \equiv \log(x - \mathrm{low}) - \log(\mathrm{high} - x)
+
+    """
+    return np.log(x-low) - np.log(high-x)
+
+def inv_logit(y, low=0, high=1):
+    """Returns the ``x`` such that ``y == logit(x, low, high)``.
+
+    """
+    ey = np.exp(y)
+    return low/(1.0 + ey) + high/(1.0 + 1.0/ey)
+
+def flat_logit_log_prior(y, low=0, high=1):
+    """Returns the log probability of a density that is flat in ``x`` when
+    ``y = logit(x, low, high)``.
+
+    """
+    
+    return np.log(high-low) + y - 2.0*np.log1p(np.exp(y))
+
 def find_one_sigma_equivalent(logpost, x0, l0=None, dx_max=None):
     """Returns an ``(ndim,)`` shaped array giving the distance in each
     coordinate over which the log-posterior drops by 0.5 (for a
