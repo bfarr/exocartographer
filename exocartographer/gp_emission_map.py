@@ -86,7 +86,7 @@ class EmissionMapPosterior(object):
         p = self.to_params(p)
 
         return inv_logit(p['logit_spatial_scale'],
-                         low=self.spatial_scale_low
+                         low=self.spatial_scale_low,
                          high=self.spatial_scale_high)
 
     def wn_rel_amp(self, p):
