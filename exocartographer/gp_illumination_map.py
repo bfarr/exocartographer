@@ -36,11 +36,12 @@ def rotate_vector(rqs, v):
     return result[:,1:]
 
 class IlluminationMapPosterior(object):
-    def __init__(self, times, intensity, sigma_intensity, nside=4):
+    def __init__(self, times, intensity, sigma_intensity, nside=4, nside_illum=16):
         self._times = times
         self._intensity = intensity
         self._sigma_intensity = sigma_intensity
         self._nside = nside
+        self._nside_illum = nside_illum
 
     @property
     def times(self):
@@ -59,12 +60,20 @@ class IlluminationMapPosterior(object):
         return self._nside
 
     @property
+    def nside_illum(self):
+        return self._nside_illum
+
+    @property
     def ntimes(self):
         return self.times.shape[0]
 
     @property
     def npix(self):
         return hp.nside2npix(self.nside)
+
+    @property
+    def npix_illum(self):
+        return hp.nside2npix(self.nside_illum)
 
     @property
     def dtype(self):
@@ -159,7 +168,7 @@ class IlluminationMapPosterior(object):
         sun_vectors = rotate_vector(sun_rotation, sun_vec)
         obs_vectors = rotate_vector(obs_rotation, obs_vec)
 
-        pts = hp.pix2vec(self.nside, np.arange(0, self.npix))
+        pts = hp.pix2vec(self.nside_illum, np.arange(0, self.npix_illum))
         pts = np.column_stack(pts)
 
         cos_insolation = np.sum(sun_vectors[:,np.newaxis,:]*pts[np.newaxis,:,:], axis=2)
@@ -172,7 +181,11 @@ class IlluminationMapPosterior(object):
 
         cos_factors = cos_insolation*cos_obs
 
-        return np.logaddexp.reduce(p['log_albedo_map'] + np.log(cos_factors), axis=1)
+        log_area = np.log(hp.nside2pixarea(self.nside_illum))
+
+        log_albedo_map = gm.resolve(p['log_albedo_map'], self.nside_illum)
+        
+        return np.logaddexp.reduce(log_albedo_map + log_area + np.log(cos_factors), axis=1)
 
     def log_prior(self, p):
         p = self.to_params(p)
