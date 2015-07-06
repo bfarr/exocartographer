@@ -99,3 +99,34 @@ def draw_map(nside, mu, sigma, wn_rel_amp, lambda_spatial, nest=False):
     mean = mu*np.ones(n)
 
     return np.random.multivariate_normal(mean, cov)
+
+def resolve(pix, new_nside, nest=False):
+    nside = hp.npix2nside(pix.shape[0])
+
+    if not nest:
+        rpix = resolve(hp.reorder(pix, r2n=True), new_nside, nest=True)
+        return hp.reorder(rpix, n2r=True)
+    else:
+        if nside == new_nside:
+            return pix
+        elif nside < new_nside:
+            # Interpolate up one resolution
+            nnew = hp.nside2npix(nside*2)
+            inew = np.arange(0, nnew, dtype=np.int)
+            
+            new_pix = np.zeros(nnew)
+
+            new_pix = pix[inew//4]
+
+            return resolve(new_pix, new_nside, nest=nest)
+        else:
+            # Intepolate down one resolution
+            nnew = hp.nside2npix(nside/2)
+            inew = np.arange(0, nnew, dtype=np.int)
+
+            new_pix = np.zeros(nnew)
+
+            new_pix = 0.25*(pix[::4] + pix[1::4] + pix[2::4] + pix[3::4])
+
+            return resolve(new_pix, new_nside, nest=nest)
+            
