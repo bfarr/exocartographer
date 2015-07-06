@@ -5,6 +5,7 @@
 import healpy as hp
 import numpy as np
 import scipy.linalg as sl
+import warnings
 
 def exp_cov(nside, wn_rel_amp, lambda_angular, nest=False):
     """Returns a covariance function for a healpix map with ``nside``
@@ -67,6 +68,7 @@ def map_logprior(hpmap, mu, sigma, wn_rel_amp, lambda_angular, nest=False):
     try:
         chof, low = sl.cho_factor(cov)
     except sl.LinAlgError:
+        warnings.warn('linear algebra error in gp_map Cholesky factorization; retuning -inf')
         return np.NINF
 
     logdet = np.sum(np.log(np.diag(chof)))
