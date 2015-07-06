@@ -126,7 +126,7 @@ class IlluminationMapPosterior(object):
                          low=self.wn_low,
                          high=self.wn_high)
 
-    def lightcurve(self, p):
+    def visibility_illumination_maps(self, p):
         p = self.to_params(p)
         
         cos_inc = inv_logit(p['logit_cos_inc'])
@@ -150,7 +150,7 @@ class IlluminationMapPosterior(object):
                        [0.0, 0.0, 1.0]])
         Ry = np.array([[cos_obl, 0.0, -sin_obl],
                        [0.0, 1.0, 0.0],
-                       [sin_obl, 0.0, 1.0]])
+                       [sin_obl, 0.0, cos_obl]])
         R = np.dot(Ry, Rz)
         obs_vec = np.dot(R, obs_vec)
         sun_vec = np.dot(R, sun_vec)
@@ -184,8 +184,12 @@ class IlluminationMapPosterior(object):
         log_area = np.log(hp.nside2pixarea(self.nside_illum))
 
         log_albedo_map = gm.resolve(p['log_albedo_map'], self.nside_illum)
+
+        return log_albedo_map + log_area + np.log(cos_factors)
+
+    def lightcurve(self, p):
         
-        return np.logaddexp.reduce(log_albedo_map + log_area + np.log(cos_factors), axis=1)
+        return np.logaddexp.reduce(self.visibility_illumination_maps(p), axis=1)
 
     def log_prior(self, p):
         p = self.to_params(p)
