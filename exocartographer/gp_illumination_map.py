@@ -179,6 +179,8 @@ class IlluminationMapPosterior(object):
 
         lp = 0.0
 
+        lp += p['log_sigma'] # Flat prior in sigma
+
         lp += flat_logit_log_prior(p['logit_wn_rel_amp'],
                                    low=self.wn_low,
                                    high=self.wn_high)
