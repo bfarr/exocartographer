@@ -126,7 +126,7 @@ class IlluminationMapPosterior(object):
                          low=self.wn_low,
                          high=self.wn_high)
 
-    def visibility_illumination_maps(self, p):
+    def visibility_illumination_matrix(self, p):
         p = self.to_params(p)
         
         cos_inc = inv_logit(p['logit_cos_inc'])
@@ -181,15 +181,34 @@ class IlluminationMapPosterior(object):
 
         cos_factors = cos_insolation*cos_obs
 
-        log_area = np.log(hp.nside2pixarea(self.nside_illum))
+        area = hp.nside2pixarea(self.nside_illum)
 
-        log_albedo_map = gm.resolve(p['log_albedo_map'], self.nside_illum)
+        return area*cos_factors
 
-        return log_albedo_map + log_area + np.log(cos_factors)
+    def resolved_visibility_illumination_matrix(self, p):
+        V = self.visibility_illumination_matrix(p)
+
+        assert self.nside_illum >= self.nside, 'resolution mismatch: nside > nside_illum'
+
+        if self.nside_illum == self.nside:
+            return V
+        else:
+            nside_V = self.nside_illum
+            V = np.array(hp.reorder(V, r2n=True))
+            while nside_V > self.nside:
+                V = V[:,::4] + V[:,1::4] + V[:,2::4] + V[:,3::4]
+                nside_V = nside_V / 2
+            V = hp.reorder(V, n2r=True)
+
+            return V
+    
+    def visibility_illumination_maps(self, p):
+        p = self.to_params(p)
+        return np.exp(gm.resolve(p['log_albedo_map'], self.nside_illum))*self.visibility_illumination_matrix(p)
 
     def lightcurve(self, p):
         
-        return np.logaddexp.reduce(self.visibility_illumination_maps(p), axis=1)
+        return np.log(np.sum(self.visibility_illumination_maps(p), axis=1))
 
     def log_prior(self, p):
         p = self.to_params(p)
