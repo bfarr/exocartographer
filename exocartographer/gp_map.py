@@ -35,7 +35,7 @@ def exp_cov(nside, wn_rel_amp, lambda_angular, nest=False):
     
     thetas = np.arccos(dot_prods)
 
-    cov = np.exp(-thetas*thetas/(2.0*lambda_angular*lambda_angular))
+    cov = np.exp(-thetas/(lambda_angular))
     cov[np.diag_indices(hp.nside2npix(nside))] = 1.0
     cov[np.diag_indices(hp.nside2npix(nside))] += wn_rel_amp
     cov /= (1.0 + wn_rel_amp)
