@@ -245,3 +245,91 @@ class IlluminationMapPosterior(object):
 
     def __call__(self, p):
         return self.log_pdata(p) + self.log_pmap(p) + self.log_prior(p)
+
+    def gp_sigma_matrix(self, p):
+        p = self.to_params(p)
+
+        sigma = np.exp(p['log_sigma'])
+        wn_rel_amp = self.wn_rel_amp(p)
+        lambda_spatial = self.spatial_scale(p)
+
+        Sigma = sigma*sigma*gm.exp_cov(self.nside, wn_rel_amp, lambda_spatial)
+
+        return Sigma
+
+    def data_sigma_matrix(self, inv=False):
+        dterm = self.sigma_intensity*self.sigma_intensity*np.exp(2*self.intensity)
+        if not inv:
+            return np.diag(dterm)
+        else:
+            return np.diag(1.0/dterm)
+        
+    
+    def gamma_matrix(self, p):
+        p = self.to_params(p)
+
+        Sigma = self.gp_sigma_matrix(p)
+
+        V = self.resolved_visibility_illumination_matrix(p)
+
+        sigma_matrix = self.data_sigma_matrix()
+
+        M = sigma_matrix + np.dot(V, np.dot(Sigma, V.T))
+
+        MM = np.linalg.solve(M, np.dot(V, Sigma))
+
+        MMM = np.dot(Sigma, np.dot(V.T, MM))
+
+        return Sigma - MMM
+
+
+    def mbar(self, p, gm=None):
+        p = self.to_params(p)
+
+        if gm is None:
+            gm = self.gamma_matrix(p)
+
+        Sigma = self.gp_sigma_matrix(p)
+
+        dover_sigma = 1.0/(self.sigma_intensity*self.sigma_intensity*np.exp(self.intensity))
+
+        A = np.solve(Sigma, p['mu']*np.ones(Sigma.shape[0]))
+        B = np.dot(V.T, dover_sigma)
+
+        return np.dot(gm, A+B)
+
+    def log_mapmarg_likelihood(self, p):
+        p = self.to_params(p)
+        
+        gm = self.gamma_matrix(p)
+        mbar = self.mbar(p, gm=gm)
+
+        log_mapp = gm.map_logprior(mbar, p['mu'], np.exp(p['log_sigma']), self.wn_rel_amp(p), self.lambda_spatial(p))
+
+        V = self.resolved_visibility_illumination_matrix(p)
+        map_lc = np.dot(V, mbar)
+
+        residual = np.exp(self.intensity) - map_lc
+        sigmas = np.exp(self.sigma_intensity + self.intensity)
+
+        chi2 = np.sum(np.square(residual/sigmas))
+
+        Nd = residual.shape[0]
+        Nm = mbar.shape[0]
+        
+        log_datap = -0.5*Nd*np.log(2.0*np.pi) - np.sum(np.log(sigmas)) - 0.5*chi2
+
+        C = log_datap + log_mapp
+
+        gamma_eigs = np.eigvalsh(gm)
+
+        return C + 0.5*Nm*np.log(2.0*np.pi) + 0.5*np.sum(np.log(np.abs(gamma_eigs)))
+
+    def log_mapmarg_posterior(self, p):
+        pp = np.zeros(self.nparams)
+
+        Nnonmap = self.nparams - hp.nside2npix(self.nside)
+
+        pp[:Nnonmap] = p
+        
+        return self.log_mapmarg_likelihood(pp) + self.log_prior(pp)
