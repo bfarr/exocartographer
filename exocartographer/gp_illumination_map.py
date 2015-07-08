@@ -373,3 +373,10 @@ class IlluminationMapPosterior(object):
 
     def log_posterior_map(self, p):
         return self.log_prior_map(p) + self.log_pdata_map(p) + self.log_pmap_map(p)
+
+    def draw_map(self, p):
+        V = self.resolved_visibility_illumination_matrix(p)
+        gamma = self.gamma_matrix(p, V)
+        mbar = self.mbar(p, gamma, V)
+
+        return np.random.multivariate_normal(mbar, gamma)
