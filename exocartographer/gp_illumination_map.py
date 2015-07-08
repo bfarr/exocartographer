@@ -361,7 +361,7 @@ class IlluminationMapPosterior(object):
         map_lc = np.dot(V, mbar)
 
         residual = np.exp(self.intensity) - map_lc
-        sigmas = np.exp(self.sigma_intensity + self.intensity)
+        sigmas = self.sigma_intensity * np.exp(self.intensity)
 
         chi2 = np.sum(np.square(residual/sigmas))
 
