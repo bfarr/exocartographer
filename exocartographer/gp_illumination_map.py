@@ -37,6 +37,8 @@ def rotate_vector(rqs, v):
 
 class IlluminationMapPosterior(object):
     def __init__(self, times, intensity, sigma_intensity, nside=4, nside_illum=16):
+        assert nside_illum >= nside, 'IlluminationMapPosterior: must have nside_illum >= nside'
+
         self._times = times
         self._intensity = intensity
         self._sigma_intensity = sigma_intensity
@@ -86,12 +88,28 @@ class IlluminationMapPosterior(object):
                          ('log_orbital_period', np.float),
                          ('logit_cos_inc', np.float),
                          ('logit_cos_obl', np.float),
+                         ('logit_phi', np.float)])
+    
+    @property
+    def dtype_map(self):
+        return np.dtype([('mu', np.float),
+                         ('log_sigma', np.float),
+                         ('logit_wn_rel_amp', np.float),
+                         ('logit_spatial_scale', np.float),
+                         ('t0', np.float),
+                         ('log_rotation_period', np.float),
+                         ('log_orbital_period', np.float),
+                         ('logit_cos_inc', np.float),
+                         ('logit_cos_obl', np.float),
                          ('logit_phi', np.float),
                          ('log_albedo_map', np.float, self.npix)])
 
     @property
     def nparams(self):
-        return self.npix + 10
+        return 10
+    @property
+    def nparams_map(self):
+        return self.nparams + self.npix
 
     @property
     def wn_low(self):
@@ -112,6 +130,18 @@ class IlluminationMapPosterior(object):
     def to_params(self, p):
         return np.atleast_1d(p).view(self.dtype).squeeze()
 
+    def to_params_map(self, p):
+        return np.atleast_1d(p).view(self.dtype_map).squeeze()
+
+    def params_map_to_params(self, pm):
+        pm = self.to_params_map(pm)
+        pp = self.to_params(np.zeros(self.nparams))
+
+        for n in pp.dtype.names:
+            pp[n] = pm[n]
+
+        return pp
+
     def spatial_scale(self, p):
         p = self.to_params(p)
 
@@ -126,6 +156,9 @@ class IlluminationMapPosterior(object):
                          low=self.wn_low,
                          high=self.wn_high)
 
+    def visibility_illumination_matrix_map(self, p):
+        return self.visibility_illumination_matrix(self.params_map_to_params(p))
+    
     def visibility_illumination_matrix(self, p):
         p = self.to_params(p)
         
@@ -198,16 +231,15 @@ class IlluminationMapPosterior(object):
             while nside_V > self.nside:
                 V = V[:,::4] + V[:,1::4] + V[:,2::4] + V[:,3::4]
                 nside_V = nside_V / 2
-            V = hp.reorder(V, n2r=True)
+            V = np.array(hp.reorder(V, n2r=True))
 
             return V
-    
-    def visibility_illumination_maps(self, p):
-        p = self.to_params(p)
-        return np.exp(gm.resolve(p['log_albedo_map'], self.nside_illum))*self.visibility_illumination_matrix(p)
 
-    def lightcurve(self, p):
-        
+    def visibility_illumination_maps(self, p):
+        p = self.to_params_map(p)
+        return np.exp(gm.resolve(p['log_albedo_map'], self.nside_illum))*self.visibility_illumination_matrix_map(p)
+
+    def lightcurve_map(self, p):
         return np.log(np.sum(self.visibility_illumination_maps(p), axis=1))
 
     def log_prior(self, p):
@@ -226,25 +258,32 @@ class IlluminationMapPosterior(object):
                                    high=self.spatial_scale_high)
 
         return lp
+
+    def log_prior_map(self, p):
+        p = self.to_params_map(p)
+
+        pp = self.to_params(np.zeros(self.nparams))
+
+        for n in pp.dtype.names:
+            pp[n] = p[n]
+
+        return self.log_prior(pp)
     
-    def log_pdata(self, p):
-        p = self.to_params(p)
+    def log_pdata_map(self, p):
+        p = self.to_params_map(p)
 
         lightcurve = self.lightcurve(p)
 
         return np.sum(ss.norm.logpdf(self.intensity, loc=lightcurve, scale=self.sigma_intensity))
 
-    def log_pmap(self, p):
-        p = self.to_params(p)
+    def log_pmap_map(self, p):
+        p = self.to_params_map(p)
 
         sigma = np.exp(p['log_sigma'])
         wn_rel_amp = self.wn_rel_amp(p)
         lambda_spatial = self.spatial_scale(p)
 
         return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
-
-    def __call__(self, p):
-        return self.log_pdata(p) + self.log_pmap(p) + self.log_prior(p)
 
     def gp_sigma_matrix(self, p):
         p = self.to_params(p)
@@ -265,12 +304,13 @@ class IlluminationMapPosterior(object):
             return np.diag(1.0/dterm)
         
     
-    def gamma_matrix(self, p):
+    def gamma_matrix(self, p, V=None):
         p = self.to_params(p)
 
         Sigma = self.gp_sigma_matrix(p)
 
-        V = self.resolved_visibility_illumination_matrix(p)
+        if V is None:
+            V = self.resolved_visibility_illumination_matrix(p)
 
         sigma_matrix = self.data_sigma_matrix()
 
@@ -283,7 +323,7 @@ class IlluminationMapPosterior(object):
         return Sigma - MMM
 
 
-    def mbar(self, p, gm=None):
+    def mbar(self, p, gm=None, V=None):
         p = self.to_params(p)
 
         if gm is None:
@@ -291,22 +331,25 @@ class IlluminationMapPosterior(object):
 
         Sigma = self.gp_sigma_matrix(p)
 
+        if V is None:
+            V = self.resolved_visibility_illumination_matrix(p)
+
         dover_sigma = 1.0/(self.sigma_intensity*self.sigma_intensity*np.exp(self.intensity))
 
-        A = np.solve(Sigma, p['mu']*np.ones(Sigma.shape[0]))
+        A = np.linalg.solve(Sigma, p['mu']*np.ones(Sigma.shape[0]))
         B = np.dot(V.T, dover_sigma)
 
         return np.dot(gm, A+B)
 
     def log_mapmarg_likelihood(self, p):
         p = self.to_params(p)
-        
-        gm = self.gamma_matrix(p)
-        mbar = self.mbar(p, gm=gm)
-
-        log_mapp = gm.map_logprior(mbar, p['mu'], np.exp(p['log_sigma']), self.wn_rel_amp(p), self.lambda_spatial(p))
 
         V = self.resolved_visibility_illumination_matrix(p)
+        gamma = self.gamma_matrix(p, V)
+        mbar = self.mbar(p, gamma, V)
+
+        log_mapp = gm.map_logprior(mbar, p['mu'], np.exp(p['log_sigma']), self.wn_rel_amp(p), self.spatial_scale(p))
+
         map_lc = np.dot(V, mbar)
 
         residual = np.exp(self.intensity) - map_lc
@@ -321,15 +364,12 @@ class IlluminationMapPosterior(object):
 
         C = log_datap + log_mapp
 
-        gamma_eigs = np.eigvalsh(gm)
+        gamma_eigs = np.linalg.eigvalsh(gamma)
 
         return C + 0.5*Nm*np.log(2.0*np.pi) + 0.5*np.sum(np.log(np.abs(gamma_eigs)))
 
-    def log_mapmarg_posterior(self, p):
-        pp = np.zeros(self.nparams)
+    def __call__(self, p):
+        return self.log_prior(p) + self.log_mapmarg_likelihood(p)
 
-        Nnonmap = self.nparams - hp.nside2npix(self.nside)
-
-        pp[:Nnonmap] = p
-        
-        return self.log_mapmarg_likelihood(pp) + self.log_prior(pp)
+    def log_posterior_map(self, p):
+        return self.log_prior_map(p) + self.log_pdata_map(p) + self.log_pmap_map(p)
