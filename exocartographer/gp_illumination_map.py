@@ -317,6 +317,11 @@ class IlluminationMapPosterior(object):
         lp += self.log_period_prior(p['log_rotation_period'])
         lp += self.log_period_prior(p['log_orbital_period'])
 
+        lp += flat_logit_log_prior(p['logit_phi_orb'], low=0, high=2*np.pi)
+        lp += flat_logit_log_prior(p['logit_cos_obl'], low=0, high=1)
+        lp += flat_logit_log_prior(p['logit_phi_rot'], low=0, high=2*np.pi)
+        lp += flat_logit_log_prior(p['logit_cos_inc'], low=0, high=1)
+        
         return lp
 
     def log_period_prior(self, logP):
