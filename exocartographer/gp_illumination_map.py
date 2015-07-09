@@ -362,9 +362,9 @@ class IlluminationMapPosterior(object):
 
     def data_sigma_matrix(self, inv=False):
         if not inv:
-            return np.diag(self.sigma_intensity)
+            return np.diag(np.square(self.sigma_intensity))
         else:
-            return np.diag(1.0/self.sigma_intensity)
+            return np.diag(1.0/np.square(self.sigma_intensity))
         
     
     def gamma_matrix(self, p, V=None):
