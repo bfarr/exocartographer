@@ -220,36 +220,18 @@ class IlluminationMapPosterior(object):
     def visibility_illumination_matrix(self, p):
         p = self.to_params(p)
 
-        cos_inc = inv_logit(p['logit_cos_inc'], 0.0, 1.0)
-        sin_inc = np.sqrt(1.0 - cos_inc*cos_inc)
-
-        cos_obl = inv_logit(p['logit_cos_obl'], 0.0, 1.0)
-        sin_obl = np.sqrt(1.0 - cos_obl*cos_obl)
-        obl = np.arccos(cos_obl)
-
-        phi_rot = inv_logit(p['logit_phi_rot'], 0.0, 2.0*np.pi)
-        cos_phi_rot = np.cos(phi_rot)
-        sin_phi_rot = np.sin(phi_rot)
-
         phi_orb = inv_logit(p['logit_phi_orb'], 0.0, 2.0*np.pi)
         cos_phi_orb = np.cos(phi_orb)
         sin_phi_orb = np.sin(phi_orb)
 
         omega_orb = 2.0*np.pi/np.exp(p['log_orbital_period'])
-        omega_rot = 2.0*np.pi/np.exp(p['log_rotation_period'])
         
-        S = np.array([cos_phi_rot*sin_obl, sin_phi_rot*sin_obl, cos_obl])
-
+        no = self._observer_normal_orbit_coords(p)
         ns = np.array([-cos_phi_orb, -sin_phi_orb, 0.0])
-        no = np.array([-sin_inc, 0.0, cos_inc])
         
-        spin_rot_quat = quaternion_multiply(rotation_quaternions(np.array([0.0, 1.0, 0.0]), -obl), \
-                                            rotation_quaternions(np.array([0.0, 0.0, 1.0]), -phi_rot))
-
         orb_quats = rotation_quaternions(np.array([0.0, 0.0, 1.0]), -omega_orb*self.times)
-        rot_quats = rotation_quaternions(S, -omega_rot*self.times)
 
-        to_body_frame_quats = quaternion_multiply(spin_rot_quat,rot_quats)
+        to_body_frame_quats = self._body_frame_quaternions(p, self.times)
         star_to_bf_quats = quaternion_multiply(to_body_frame_quats,orb_quats)
         
         nos = rotate_vector(to_body_frame_quats, no)
@@ -272,6 +254,38 @@ class IlluminationMapPosterior(object):
 
         return area*cos_factors
 
+    def _body_frame_quaternions(self, p, times):
+        p = self.to_params(p)
+
+        times = np.atleast_1d(times)
+
+        cos_obl = inv_logit(p['logit_cos_obl'], 0.0, 1.0)
+        sin_obl = np.sqrt(1.0 - cos_obl*cos_obl)
+        obl = np.arccos(cos_obl)
+
+        phi_rot = inv_logit(p['logit_phi_rot'], 0.0, 2.0*np.pi)
+        cos_phi_rot = np.cos(phi_rot)
+        sin_phi_rot = np.sin(phi_rot)
+
+        omega_rot = 2.0*np.pi/np.exp(p['log_rotation_period'])
+        
+        S = np.array([cos_phi_rot*sin_obl, sin_phi_rot*sin_obl, cos_obl])
+
+        spin_rot_quat = quaternion_multiply(rotation_quaternions(np.array([0.0, 1.0, 0.0]), -obl), \
+                                            rotation_quaternions(np.array([0.0, 0.0, 1.0]), -phi_rot))
+
+        rot_quats = rotation_quaternions(S, -omega_rot*times)
+
+        return quaternion_multiply(spin_rot_quat,rot_quats)
+
+    def _observer_normal_orbit_coords(self, p):
+        p = self.to_params(p)
+
+        cos_inc = inv_logit(p['logit_cos_inc'], 0.0, 1.0)
+        sin_inc = np.sqrt(1.0 - cos_inc*cos_inc)
+
+        return np.array([-sin_inc, 0.0, cos_inc])
+        
     def resolved_visibility_illumination_matrix(self, p):
         V = self.visibility_illumination_matrix(p)
 
@@ -448,3 +462,17 @@ class IlluminationMapPosterior(object):
         mbar = self.mbar(p, gamma, V)
 
         return np.random.multivariate_normal(mbar, gamma)
+
+    def sub_observer_latlong(self, p, times):
+        no = self._observer_normal_orbit_coords(p)
+
+        body_quats = self._body_frame_quaternions(p, times)
+
+        no_body = rotate_vector(body_quats, no)
+
+        colats = np.arccos(no_body[:,2])
+        longs = np.arctan2(no_body[:,1], no_body[:,0])
+
+        longs[longs < 0] += 2*np.pi
+
+        return np.pi/2.0-colats, longs
