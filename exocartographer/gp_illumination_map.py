@@ -90,7 +90,7 @@ class IlluminationMapPosterior(object):
     @property
     def dtype_map(self):
         typel = [(n, np.float) for n in self._param_names]
-        typel.append(('log_albedo_map', np.float, self.npix))
+        typel.append(('albedo_map', np.float, self.npix))
         return np.dtype(typel)
 
     @property
@@ -291,10 +291,10 @@ class IlluminationMapPosterior(object):
 
     def visibility_illumination_maps(self, p):
         p = self.to_params(p)
-        return np.exp(gm.resolve(p['log_albedo_map'], self.nside_illum))*self.visibility_illumination_matrix(p)
+        return p['albedo_map']*self.resolved_visibility_illumination_matrix(p)
 
     def lightcurve_map(self, p):
-        return np.log(np.sum(self.visibility_illumination_maps(p), axis=1))
+        return np.sum(self.visibility_illumination_maps(p), axis=1)
 
     def log_prior(self, p):
         p = self.to_params(p)
@@ -347,7 +347,7 @@ class IlluminationMapPosterior(object):
         wn_rel_amp = self.wn_rel_amp(p)
         lambda_spatial = self.spatial_scale(p)
 
-        return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
+        return gm.map_logprior(p['albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
 
     def gp_sigma_matrix(self, p):
         p = self.to_params(p)
@@ -361,11 +361,10 @@ class IlluminationMapPosterior(object):
         return Sigma
 
     def data_sigma_matrix(self, inv=False):
-        dterm = self.sigma_intensity*self.sigma_intensity*np.exp(2*self.intensity)
         if not inv:
-            return np.diag(dterm)
+            return np.diag(self.sigma_intensity)
         else:
-            return np.diag(1.0/dterm)
+            return np.diag(1.0/self.sigma_intensity)
         
     
     def gamma_matrix(self, p, V=None):
@@ -398,7 +397,7 @@ class IlluminationMapPosterior(object):
         if V is None:
             V = self.resolved_visibility_illumination_matrix(p)
 
-        dover_sigma = 1.0/(self.sigma_intensity*self.sigma_intensity*np.exp(self.intensity))
+        dover_sigma = self.intensity/self.sigma_intensity/self.sigma_intensity
 
         A = np.linalg.solve(Sigma, p['mu']*np.ones(Sigma.shape[0]))
         B = np.dot(V.T, dover_sigma)
@@ -416,8 +415,8 @@ class IlluminationMapPosterior(object):
 
         map_lc = np.dot(V, mbar)
 
-        residual = np.exp(self.intensity) - map_lc
-        sigmas = self.sigma_intensity * np.exp(self.intensity)
+        residual = self.intensity - map_lc
+        sigmas = self.sigma_intensity
 
         chi2 = np.sum(np.square(residual/sigmas))
 
