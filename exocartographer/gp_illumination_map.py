@@ -196,6 +196,28 @@ class IlluminationMapPosterior(object):
     def inc(self, p):
         return np.arccos(self.cos_inc(p))
 
+    def set_params(self, p, dict):
+        p = np.atleast_1d(p).view(self.dtype)
+
+        logit_names = {'wn_rel_amp': (self.wn_low, self.wn_high),
+                       'spatial_scale': (self.spatial_scale_low, self.spatial_scale_high),
+                       'phi_orb': (0, 2*np.pi),
+                       'cos_obl': (0, 1),
+                       'phi_rot': (0, 2*np.pi),
+                       'cos_inc': (0, 1)}
+        log_names = set(['sigma', 'rotation_period', 'orbital_period'])
+
+        for n, x in dict.items():
+            if n in p.dtype.names:
+                p[n] = x
+            elif n in logit_names:
+                l,h = logit_names[n]
+                p['logit_' + n] = logit(x, l, h)
+            elif n in log_names:
+                p['log_' + n] = np.log(x)
+
+        return p
+
     def unfix_params(self):
         self.fixed_params = None
 
