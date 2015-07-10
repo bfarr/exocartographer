@@ -187,8 +187,6 @@ def powell(logpost, p0, view='orth', lookback=5):
         xs = np.arange(low, high)
         lines = ax3.plot(xs, history[low:high]);
         ax3.legend(lines, params)
-        ax3.legend()
-        ax4.legend()
         lines = ax4.plot(xs, lnprobs[-min(lookback, len(lnprobs)):])
         ax4.legend(lines, ['log(post)', 'log(prior)', 'log(like)'])
         ax3.set_xlabel('steps')
