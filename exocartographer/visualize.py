@@ -139,17 +139,12 @@ def draw_pos_maps(logpost, pbest, proj='orth', show=True, nmaps=None, fignum=1):
 
 
 def powell(logpost, p0, view='orth', lookback=5):
-    global pbest
-    global history
-    global lnprobs
-    global this_view
+    pbests = [p0]
 
     def cb(x):
         clear_output(wait=True)
-        global pbest
-        global history
-        global lnprobs
 
+        pbests.append(x)
         pbest = x
 
         fig1 = plt.figure(num=1)
@@ -168,8 +163,8 @@ def powell(logpost, p0, view='orth', lookback=5):
         xlow, xhigh = min(logpost.times), max(logpost.times)
 
         probs = (logpost(pbest), logpost.log_prior(pbest), logpost.log_mapmarg_likelihood(pbest))
-        history = np.append(history, np.atleast_2d(pbest), axis=0)
-        lnprobs = np.append(lnprobs, np.atleast_2d(probs), axis=0)
+        history.append(pbest)
+        lnprobs.append(probs)
 
         ax1.errorbar(logpost.times, logpost.intensity, logpost.sigma_intensity, color='k', lw=1.5, capthick=0)
         for i in range(0, lookback):
@@ -177,18 +172,29 @@ def powell(logpost, p0, view='orth', lookback=5):
                 p = history[-(i+1)]
                 lc = logpost.lightcurve_map(np.concatenate((p, logpost.mbar(p))))
                 ax1.plot(logpost.times, lc, color='b', alpha=1-i*1./lookback)
-                ax2.errorbar(logpost.times, (logpost.intensity - lc)/logpost.sigma_intensity,
-                             np.ones_like(logpost.sigma_intensity), color='b', lw=1.5, capthick=0, alpha=1-i*1./lookback)
+                ax2.plot(logpost.times, (logpost.intensity - lc)/logpost.sigma_intensity, color='b', alpha=1-i*1./lookback)
             except IndexError:
                 pass
         ax2.plot((xlow, xhigh), (0, 0), color='k', ls='--', alpha=0.5)
         ax1.set_xlim(xlow, xhigh)
         ax2.set_xlim(xlow, xhigh)
+        ax1.set_xlabel('time')
+        ax1.set_ylabel('intensity')
+        ax2.set_xlabel('time')
+        ax2.set_ylabel('standardized residual')
 
-        low, high = history.shape[0]-min(lookback, history.shape[0]), history.shape[0]
+        low, high = len(history)-min(lookback, len(history)), len(history)
         xs = np.arange(low, high)
-        ax3.plot(xs, history[low:high]);
-        ax4.plot(xs, lnprobs[-min(lookback, len(lnprobs)):])
+        lines = ax3.plot(xs, history[low:high]);
+        ax3.legend(lines, params)
+        ax3.legend()
+        ax4.legend()
+        lines = ax4.plot(xs, lnprobs[-min(lookback, len(lnprobs)):])
+        ax4.legend(lines, ['log(post)', 'log(prior)', 'log(like)'])
+        ax3.set_xlabel('steps')
+        ax4.set_xlabel('steps')
+        ax3.set_ylabel('param')
+        ax4.set_ylabel('log PDF')
 
         display(fig1)
         display(fig2)
@@ -199,8 +205,9 @@ def powell(logpost, p0, view='orth', lookback=5):
 
         display(probs)
 
-    history = np.empty((0, p0.shape[0]))
-    lnprobs = np.empty((0, 3))
+    history = []
+    lnprobs = []
+    params = logpost.dtype.names
 
     this_view = view
 
@@ -208,7 +215,11 @@ def powell(logpost, p0, view='orth', lookback=5):
     fig2, _ = plt.subplots(1, 2, num=2, figsize=(16, 4))
     fig3 = plt.figure(num=3)
 
-    pbest = so.fmin_powell(lambda x: -logpost(x), p0, callback=cb)
+    try:
+        pbest = so.fmin_powell(lambda x: -logpost(x), p0, callback=cb)
+    except KeyboardInterrupt:
+        return pbests[-1]
+
     plt.close(fig1)
     plt.close(fig2)
     plt.close(fig3)
