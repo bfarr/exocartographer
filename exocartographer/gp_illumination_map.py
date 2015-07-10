@@ -157,6 +157,45 @@ class IlluminationMapPosterior(object):
     def spatial_scale_high(self):
         return 3.0*np.pi
 
+    def sigma(self, p):
+        p = self.to_params(p)
+
+        return np.exp(p['log_sigma'])
+
+    def wn_rel_amp(self, p):
+        p = self.to_params(p)
+
+        return inv_logit(p['logit_wn_rel_amp'], self.wn_low, self.wn_high)
+
+    def spatial_scale(self, p):
+        p = self.to_params(p)
+
+        return inv_logit(p['logit_spatial_scale'], self.spatial_scale_low, self.spatial_scale_high)
+
+    def rotation_period(self, p):
+        return np.exp(self.to_params(p)['log_rotation_period'])
+
+    def orbital_period(self, p):
+        return np.exp(self.to_params(p)['log_orbital_period'])
+
+    def phi_orb(self, p):
+        return inv_logit(self.to_params(p)['logit_phi_orb'], low=0, high=2*np.pi)
+
+    def cos_obl(self, p):
+        return inv_logit(self.to_params(p)['logit_cos_obl'], low=0, high=1)
+
+    def obl(self, p):
+        return np.arccos(self.cos_obl(p))
+
+    def phi_rot(self, p):
+        return inv_logit(self.to_params(p)['logit_phi_rot'], low=0, high=2*np.pi)
+
+    def cos_inc(self, p):
+        return inv_logit(self.to_params(p)['logit_cos_inc'], low=0, high=1)
+
+    def inc(self, p):
+        return np.arccos(self.cos_inc(p))
+
     def unfix_params(self):
         self.fixed_params = None
 
