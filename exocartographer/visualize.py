@@ -172,7 +172,7 @@ def powell(logpost, p0, view='orth', lookback=5):
                 p = history[-(i+1)]
                 lc = logpost.lightcurve_map(np.concatenate((p, logpost.mbar(p))))
                 ax1.plot(logpost.times, lc, color='b', alpha=1-i*1./lookback)
-                ax2.plot(logpost.times, (logpost.intensity - lc)/logpost.sigma_intensity, color='b', alpha=1-i*1./lookback)
+                ax2.plot(logpost.times, (logpost.intensity - lc)/(logpost.error_scale(p)*logpost.sigma_intensity), color='b', alpha=1-i*1./lookback)
             except IndexError:
                 pass
         ax2.plot((xlow, xhigh), (0, 0), color='k', ls='--', alpha=0.5)

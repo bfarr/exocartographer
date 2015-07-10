@@ -80,7 +80,7 @@ class IlluminationMapPosterior(object):
     def npix_illum(self):
         return hp.nside2npix(self.nside_illum)
 
-    _param_names = ['mu', 'log_sigma', 'logit_wn_rel_amp', 'logit_spatial_scale',
+    _param_names = ['log_error_scale', 'mu', 'log_sigma', 'logit_wn_rel_amp', 'logit_spatial_scale',
                     'log_rotation_period', 'log_orbital_period',
                     'logit_phi_orb', 'logit_cos_obl', 'logit_phi_rot',
                     'logit_cos_inc']
@@ -124,7 +124,7 @@ class IlluminationMapPosterior(object):
 
     @property
     def nparams_full(self):
-        return 10
+        return 11
 
     @property
     def nparams(self):
@@ -157,6 +157,9 @@ class IlluminationMapPosterior(object):
     def spatial_scale_high(self):
         return 3.0*np.pi
 
+    def error_scale(self, p):
+        return np.exp(self.to_params(p)['log_error_scale'])
+    
     def sigma(self, p):
         p = self.to_params(p)
 
@@ -205,7 +208,7 @@ class IlluminationMapPosterior(object):
                        'cos_obl': (0, 1),
                        'phi_rot': (0, 2*np.pi),
                        'cos_inc': (0, 1)}
-        log_names = set(['sigma', 'rotation_period', 'orbital_period'])
+        log_names = set(['err_scale', 'sigma', 'rotation_period', 'orbital_period'])
 
         for n, x in dict.items():
             if n in p.dtype.names:
@@ -484,7 +487,9 @@ class IlluminationMapPosterior(object):
 
         lightcurve = self.lightcurve_map(p)
 
-        return np.sum(ss.norm.logpdf(self.intensity, loc=lightcurve, scale=self.sigma_intensity))
+        errsc = np.exp(p['log_error_scale'])
+        
+        return np.sum(ss.norm.logpdf(self.intensity, loc=lightcurve, scale=self.sigma_intensity*errsc))
 
     def log_pmap_map(self, p):
         p = self.to_params(p)
@@ -553,6 +558,8 @@ class IlluminationMapPosterior(object):
     def log_mapmarg_likelihood(self, p):
         p = self.to_params(p)
 
+        errsc = np.exp(p['log_error_scale'])
+        
         V = self.resolved_visibility_illumination_matrix(p)
         gamma = self.gamma_matrix(p, V)
         mbar = self.mbar(p, gamma, V)
@@ -564,12 +571,12 @@ class IlluminationMapPosterior(object):
         residual = self.intensity - map_lc
         sigmas = self.sigma_intensity
 
-        chi2 = np.sum(np.square(residual/sigmas))
+        chi2 = np.sum(np.square(residual/(errsc*sigmas)))
 
         Nd = residual.shape[0]
         Nm = mbar.shape[0]
         
-        log_datap = -0.5*Nd*np.log(2.0*np.pi) - np.sum(np.log(sigmas)) - 0.5*chi2
+        log_datap = -0.5*Nd*np.log(2.0*np.pi) - np.sum(np.log(errsc*sigmas)) - 0.5*chi2
 
         C = log_datap + log_mapp
 
