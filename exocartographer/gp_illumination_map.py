@@ -46,6 +46,8 @@ class IlluminationMapPosterior(object):
         self._nside = nside
         self._nside_illum = nside_illum
 
+        self.fixed_params = None
+
     @property
     def times(self):
         return self._times
@@ -84,19 +86,57 @@ class IlluminationMapPosterior(object):
                     'logit_cos_inc']
     
     @property
-    def dtype(self):
+    def full_dtype(self):
         return np.dtype([(n, np.float) for n in self._param_names])
     
     @property
+    def dtype(self):
+        if self.fixed_params is None:
+            return self.full_dtype
+        else:
+            dt = self.full_dtype
+            free_dt = [(param, dt[param]) for param in dt.names
+                       if param not in self.fixed_params]
+
+            return np.dtype(free_dt)
+
+    @property
     def dtype_map(self):
+        if self.fixed_params is None:
+            return self.full_dtype_map
+
+        else:
+            dt = self.full_dtype_map
+            free_dt = [(param, dt[param]) for param in dt.names
+                       if param not in self.fixed_params]
+
+            typel = [(n, np.float) for n in self._param_names
+                     if n not in self.fixed_params and 'albedo_map' not in n]
+
+        typel.append(('albedo_map', np.float, self.npix))
+        return np.dtype(typel)
+
+    @property
+    def full_dtype_map(self):
         typel = [(n, np.float) for n in self._param_names]
         typel.append(('albedo_map', np.float, self.npix))
         return np.dtype(typel)
 
     @property
-    def nparams(self):
+    def nparams_full(self):
         return 10
+
+    @property
+    def nparams(self):
+        if self.fixed_params is None:
+            return self.nparams_full
+        else:
+            return self.nparams_full - len(self.fixed_params)
     
+    @property
+    def nparams_full_map(self):
+        return self.nparams_full + self.npix
+
     @property
     def nparams_map(self):
         return self.nparams + self.npix
@@ -117,19 +157,45 @@ class IlluminationMapPosterior(object):
     def spatial_scale_high(self):
         return 3.0*np.pi
 
+    def unfix_params(self):
+        self.fixed_params = None
+
+    def fix_params(self, fixed_params):
+        self.fixed_params = fixed_params
+
     def to_params(self, p):
         if isinstance(p, np.ndarray):
-            if p.dtype == self.dtype or p.dtype == self.dtype_map:
+            if p.dtype == self.full_dtype or p.dtype == self.full_dtype_map:
                 return p
             else:
-                p = p.view(float)
-                if p.shape[-1] == self.nparams:
-                    return p.view(self.dtype).squeeze()
+                if p.dtype == self.dtype:
+                    # Extend the array with the fixed parameters
+                    pp = np.empty(p.shape, dtype=self.full_dtype)
+                    for n in p.dtype.names:
+                        pp[n] = p[n]
+                    for n in self.fixed_params.keys():
+                        pp[n] = self.fixed_params[n]
+                    return pp
+                elif p.dtype == self.dtype_map:
+                    pp = np.empty(p.shape, dtype=self.full_dtype_map)
+                    for n in p.dtype.names:
+                        pp[n] = p[n]
+                    for n in self.fixed_params.keys():
+                        pp[n] = self.fixed_params[n]
+                    return pp
                 else:
-                    return p.view(self.dtype_map).squeeze()
+                    if p.shape[-1] == self.nparams:
+                        return self.to_params(p.view(self.dtype).squeeze())
+                    elif p.shape[-1] == self.nparams_map:
+                        return self.to_params(p.view(self.dtype_map).squeeze())
+                    else:
+                        raise ValueError("to_params: bad parameter dimension")
         else:
             p = np.atleast_1d(p)
             return self.to_params(p)
+
+    def add_map_to_full_params(self, p, map):
+        return self._add_map(p, map)
 
     def params_map_to_params(self, pm):
         pm = self.to_params(pm)
