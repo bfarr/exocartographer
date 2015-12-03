@@ -102,7 +102,8 @@ def map_logprior(hpmap, mu, sigma, wn_rel_amp, lambda_angular, nest=False):
 
 def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
     r"""Returns the GP prior on maps, consistent with :func:`map_logprior`,
-    but computed much more quickly.
+    but computed much more quickly.  See :func:`map_logprior` for the
+    description of the arguments.
 
     The logic is the following: any Gaussian map whose correlation
     matrix depends only on angular separation between points will have
@@ -116,7 +117,34 @@ def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
     constant l be equal, since rotations mix these components
     together).
 
-    So, instead of computing the covariance matrix 
+    So, instead of computing the covariance matrix and using a
+    multivariate Gaussian likelihood in pixel space, we compute the
+    :math:`a_{lm}` coefficients, and use a Gaussian likelihood in
+    Spherical Harmonic space.  Each :math:`a_{lm}` is distributed like
+
+    .. math::
+
+      a_{lm} \sim N\left(0, \sqrt{C_l}\right)
+
+    There is only one final wrinkle: the number of degrees of freedom
+    in the :math:`a_{lm}` coefficients is not equal to the number of
+    pixels.  So, we have a choice we can either
+
+      * Under-constrain the pixels by using an :math:`l_\mathrm{max}`
+        that corresponds to fewer :math:`a_{lm}` coefficients than
+        pixels.  Then there will be some linear combinations of pixels
+        (corresponding to the :math:`Y_{lm}` with :math:`l >
+        l_\mathrm{max}`) that are unconstrained by the prior.
+
+      * Over-constrain the pixels by choosing an
+        :math:`l_\mathrm{max}` that corresponds to more :math:`a_{lm}`
+        coefficients than pixels.  This means that the effective prior
+        we are imposing in pixel space is not exactly the
+        squared-exponential kernel.
+
+    We choose to do the latter, so the pixels are over-constrained.
+    This makes sampling easier (no combinations of pixles that can run
+    away to infinity).
 
     """
     npix = map.shape[0]
