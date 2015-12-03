@@ -104,6 +104,20 @@ def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
     r"""Returns the GP prior on maps, consistent with :func:`map_logprior`,
     but computed much more quickly.
 
+    The logic is the following: any Gaussian map whose correlation
+    matrix depends only on angular separation between points will have
+    a diagonal covariance matrix in Ylm space.  (This is the spatial
+    analog of stationarity in the time domain; stationary processes
+    are completely described by their Fourier-space power spectrum,
+    which is the diagonal of the covariance matrix in Fourier space.)
+    Furthermore, any map that is statistically isotropic will have a
+    Ylm covariance that is a funciton of l only (basically, rotational
+    invariance demands that the variance of the different m's at
+    constant l be equal, since rotations mix these components
+    together).
+
+    So, instead of computing the covariance matrix 
+
     """
     npix = map.shape[0]
     nside = hp.npix2nside(npix)
@@ -121,7 +135,7 @@ def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
     alm_map0 = hp.map2alm(map0, lmax=lmax)
     alm_map0_white = hp.almxfl(alm_map0, 1.0/np.sqrt(cl))
 
-    return -0.5*N*np.log(2.0*np.pi) - N*np.log(sigma) - 0.5*np.sum(nl*np.log(cl)) - 0.5*np.sum((alm_map0_white*np.conj(alm_map0_white)/sigma))
+    return -0.5*N*np.log(2.0*np.pi) - N*np.log(sigma) - 0.5*np.sum(nl*np.log(cl)) - 0.5*np.sum(alm_map0_white*np.conj(alm_map0_white)/(sigma*sigma))
 
 def draw_map(nside, mu, sigma, wn_rel_amp, lambda_spatial, nest=False):
     """Returns a map sampled from the Gaussian process with the given
@@ -155,7 +169,7 @@ def draw_map_cl(nside, mu, sigma, wn_rel_amp, lambda_spatial):
     """
     cl = exp_cov_cl(nside, wn_rel_amp, lambda_spatial)
 
-    map = hp.synfast(cl, nside, sigma=0)
+    map = hp.synfast(cl, nside, sigma=0, lmax=cl.shape[0]-1)
 
     return mu + sigma*map
 
