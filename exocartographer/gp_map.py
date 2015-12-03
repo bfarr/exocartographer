@@ -56,7 +56,7 @@ def exp_cov_cl(nside, wn_rel_amp, lambda_angular):
     """
 
     lscale = np.pi/lambda_angular
-    lmax = 3*nside
+    lmax = 4*nside
     ls = np.arange(0, lmax, dtype=np.int)
 
     cl_corr_unnorm = np.exp(-0.5*np.square(ls/lscale))
@@ -108,18 +108,20 @@ def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
     npix = map.shape[0]
     nside = hp.npix2nside(npix)
     
-    lmax = 3*nside
+    lmax = 4*nside
     ls = np.arange(0, lmax, dtype=np.int)
 
     cl = exp_cov_cl(nside, wn_rel_amp, lambda_angular)
 
-    map0 = map-mu
-    alm_map0 = hp.map2alm(map0)
-    alm_map0_white = hp.almxfl(alm_map0, 1.0/np.sqrt(cl))
-    
-    
+    nl = 2*ls + 1
 
-    return -0.5*npix*np.log(2.0*np.pi) - npix*np.log(sigma) - 0.5*np.sum(np.square(white_map/sigma))
+    N = np.sum(nl)
+
+    map0 = map-mu
+    alm_map0 = hp.map2alm(map0, lmax=lmax)
+    alm_map0_white = hp.almxfl(alm_map0, 1.0/np.sqrt(cl))
+
+    return -0.5*N*np.log(2.0*np.pi) - N*np.log(sigma) - 0.5*np.sum(nl*np.log(cl)) - 0.5*np.sum((alm_map0_white*np.conj(alm_map0_white)/sigma))
 
 def draw_map(nside, mu, sigma, wn_rel_amp, lambda_spatial, nest=False):
     """Returns a map sampled from the Gaussian process with the given
