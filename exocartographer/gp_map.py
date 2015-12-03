@@ -56,7 +56,7 @@ def exp_cov_cl(nside, wn_rel_amp, lambda_angular):
     """
 
     lscale = np.pi/lambda_angular
-    lmax = 4*nside
+    lmax = 4*nside-1
     ls = np.arange(0, lmax, dtype=np.int)
 
     cl_corr_unnorm = np.exp(-0.5*np.square(ls/lscale))
