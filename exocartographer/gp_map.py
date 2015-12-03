@@ -13,12 +13,18 @@ def exp_cov(nside, wn_rel_amp, lambda_angular, nest=False):
 
     .. math::
 
-      C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( - \frac{\theta_{ij}}{\lambda} \right)
+      C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( -\frac{1}{2} \left(\frac{\theta_{ij}}{\lambda}\right)^2 \right)
 
     where :math:`\theta_{ij}` is the great-circle angle between the
     :math:`i` and :math:`j` pixel centres.  
 
     :param nside: Healpix ``nside`` parameter.
+
+    :param wn_rel_amp: The relative amplitude of white-noise added to
+      the covariance matrix.  In other words, the pixel variance is
+      always 1, but ``wn_rel_amp`` fraction of it comes from white
+      noise, and ``1-wn_rel_amp`` of it from the correlated noise with
+      the above angular correlation function.
 
     :param lambda_angular: The angular correlation length (radians).
 
@@ -36,13 +42,32 @@ def exp_cov(nside, wn_rel_amp, lambda_angular, nest=False):
     thetas = np.arccos(dot_prods)
 
     cov = np.exp(-0.5*thetas*thetas/(lambda_angular*lambda_angular))
-    cov[np.diag_indices(hp.nside2npix(nside))] = 1.0
+    cov *= 1.0 - wn_rel_amp
     cov[np.diag_indices(hp.nside2npix(nside))] += wn_rel_amp
     cov /= (1.0 + wn_rel_amp)
 
     return cov
 
+def exp_cov_cl(nside, wn_rel_amp, lambda_angular):
+    r"""Returns the equivalent :math:`C_l` angular power spectrum to the
+    covariance returned by :func:`exp_cov`.  The returned array is
+    normalised by the Healpy convention.
+
+    """
+
+    lscale = np.pi/lambda_angular
+    lmax = 3*nside
+    ls = np.arange(0, lmax, dtype=np.int)
+
+    cl_corr_unnorm = np.exp(-0.5*np.square(ls/lscale))
+    cl_corr_norm = cl_corr_unnorm*4.0*np.pi/np.sum((2*ls+1)*cl_corr_unnorm)
+
+    cl_white_norm = 4.0*np.pi/(lmax+1.0)/(lmax+1.0)
+
+    return (1.0-wn_rel_amp)*cl_corr_norm + wn_rel_amp*cl_white_norm
+
 def map_logprior(hpmap, mu, sigma, wn_rel_amp, lambda_angular, nest=False):
+
     """Returns the GP prior on the map with exponential covariance
     function.
 
@@ -75,6 +100,27 @@ def map_logprior(hpmap, mu, sigma, wn_rel_amp, lambda_angular, nest=False):
 
     return -0.5*n*np.log(2*np.pi) - logdet - 0.5*np.dot(x, sl.cho_solve((chof, low), x))
 
+def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
+    r"""Returns the GP prior on maps, consistent with :func:`map_logprior`,
+    but computed much more quickly.
+
+    """
+    npix = map.shape[0]
+    nside = hp.npix2nside(npix)
+    
+    lmax = 3*nside
+    ls = np.arange(0, lmax, dtype=np.int)
+
+    cl = exp_cov_cl(nside, wn_rel_amp, lambda_angular)
+
+    map0 = map-mu
+    alm_map0 = hp.map2alm(map0)
+    alm_map0_white = hp.almxfl(alm_map0, 1.0/np.sqrt(cl))
+    
+    
+
+    return -0.5*npix*np.log(2.0*np.pi) - npix*np.log(sigma) - 0.5*np.sum(np.square(white_map/sigma))
+
 def draw_map(nside, mu, sigma, wn_rel_amp, lambda_spatial, nest=False):
     """Returns a map sampled from the Gaussian process with the given
     parameters.
@@ -99,6 +145,17 @@ def draw_map(nside, mu, sigma, wn_rel_amp, lambda_spatial, nest=False):
     mean = mu*np.ones(n)
 
     return np.random.multivariate_normal(mean, cov)
+
+def draw_map_cl(nside, mu, sigma, wn_rel_amp, lambda_spatial):
+    r"""Returns a map statistically equivalent to :func:`draw_map`, but is
+    much faster.
+
+    """
+    cl = exp_cov_cl(nside, wn_rel_amp, lambda_spatial)
+
+    map = hp.synfast(cl, nside, sigma=0)
+
+    return mu + sigma*map
 
 def resolve(pix, new_nside, nest=False):
     nside = hp.npix2nside(pix.shape[0])

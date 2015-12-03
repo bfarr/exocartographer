@@ -1,6 +1,7 @@
 import gp_map as gm
 import healpy as hp
 import numpy as np
+import scipy.linalg as sl
 import scipy.stats as ss
 from util import logit, inv_logit, flat_logit_log_prior
 
@@ -111,15 +112,15 @@ class IlluminationMapPosterior(object):
                        if param not in self.fixed_params]
 
             typel = [(n, np.float) for n in self._param_names
-                     if n not in self.fixed_params and 'albedo_map' not in n]
+                     if n not in self.fixed_params and 'log_albedo_map' not in n]
 
-        typel.append(('albedo_map', np.float, self.npix))
+        typel.append(('log_albedo_map', np.float, self.npix))
         return np.dtype(typel)
 
     @property
     def full_dtype_map(self):
         typel = [(n, np.float) for n in self._param_names]
-        typel.append(('albedo_map', np.float, self.npix))
+        typel.append(('log_albedo_map', np.float, self.npix))
         return np.dtype(typel)
 
     @property
@@ -208,7 +209,7 @@ class IlluminationMapPosterior(object):
                        'cos_obl': (0, 1),
                        'phi_rot': (0, 2*np.pi),
                        'cos_inc': (0, 1)}
-        log_names = set(['err_scale', 'sigma', 'rotation_period', 'orbital_period'])
+        log_names = set(['err_scale', 'sigma', 'rotation_period', 'orbital_period', 'albedo_map'])
 
         for n, x in dict.items():
             if n in p.dtype.names:
@@ -230,7 +231,7 @@ class IlluminationMapPosterior(object):
     def to_params(self, p):
         if isinstance(p, np.ndarray):
             if p.dtype == self.full_dtype or p.dtype == self.full_dtype_map:
-                return p
+                return p.squeeze()
             else:
                 if p.dtype == self.dtype:
                     # Extend the array with the fixed parameters
@@ -239,14 +240,14 @@ class IlluminationMapPosterior(object):
                         pp[n] = p[n]
                     for n in self.fixed_params.keys():
                         pp[n] = self.fixed_params[n]
-                    return pp
+                    return pp.squeeze()
                 elif p.dtype == self.dtype_map:
                     pp = np.empty(p.shape, dtype=self.full_dtype_map)
                     for n in p.dtype.names:
                         pp[n] = p[n]
                     for n in self.fixed_params.keys():
                         pp[n] = self.fixed_params[n]
-                    return pp
+                    return pp.squeeze()
                 else:
                     if p.shape[-1] == self.nparams:
                         return self.to_params(p.view(self.dtype).squeeze())
@@ -435,7 +436,7 @@ class IlluminationMapPosterior(object):
 
     def visibility_illumination_maps(self, p):
         p = self.to_params(p)
-        return p['albedo_map']*self.resolved_visibility_illumination_matrix(p)
+        return np.exp(p['log_albedo_map'])*self.resolved_visibility_illumination_matrix(p)
 
     def lightcurve_map(self, p):
         return np.sum(self.visibility_illumination_maps(p), axis=1)
@@ -498,7 +499,7 @@ class IlluminationMapPosterior(object):
         wn_rel_amp = self.wn_rel_amp(p)
         lambda_spatial = self.spatial_scale(p)
 
-        return gm.map_logprior(p['albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
+        return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
 
     def gp_sigma_matrix(self, p):
         p = self.to_params(p)
@@ -610,3 +611,30 @@ class IlluminationMapPosterior(object):
         longs[longs < 0] += 2*np.pi
 
         return np.pi/2.0-colats, longs
+
+    def log_posterior_fixed_map(self, p, log_map):
+        p = self.to_params(p)
+
+        pp = np.zeros(self.nparams_full + self.npix)
+        pp = pp.view(self.full_dtype_map)
+
+        for n in p.dtype.names:
+            pp[n] = p[n]
+        pp['log_albedo_map'] = log_map
+
+        return self.log_pdata_map(pp) + self.log_prior(p) + self.log_pmap_map(pp)
+    
+    def log_posterior_fixed_params(self, log_map, V, cho_factor_sigma, p):
+        p = self.to_params(p)
+
+        error_scale = self.error_scale(p)
+
+        lc = np.dot(V, np.exp(log_map))
+
+        resid = self.intensity - lc
+        chi2_data = np.sum(np.square(resid/(error_scale*self.sigma_intensity)))
+
+        x = log_map - p['mu']
+        chi2_map = np.dot(x, sl.cho_solve(cho_factor_sigma, x))
+
+        return -0.5*(chi2_data + chi2_map)
