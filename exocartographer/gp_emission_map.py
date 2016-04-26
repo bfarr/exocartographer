@@ -164,6 +164,6 @@ class EmissionMapPosterior(object):
 
 
     def __call__(self, p):
-        lp = self.logpdata(p) + self.logmapprior(p) + self.logpdata(p)
+        lp = self.logpdata(p) + self.logmapprior(p) + self.logprior(p)
 
         return lp
