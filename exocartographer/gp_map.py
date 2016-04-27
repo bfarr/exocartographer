@@ -38,7 +38,7 @@ def exp_cov(nside, wn_rel_amp, lambda_angular, nest=False):
     dot_prods = np.sum(vecs[np.newaxis, :, :]*vecs[:, np.newaxis, :], axis=2)
     dot_prods[dot_prods > 1] = 1.0
     dot_prods[dot_prods < -1] = -1.0
-    
+
     thetas = np.arccos(dot_prods)
 
     cov = np.exp(-0.5*thetas*thetas/(lambda_angular*lambda_angular))
@@ -85,7 +85,7 @@ def map_logprior(hpmap, mu, sigma, wn_rel_amp, lambda_angular, nest=False):
 
     nside = hp.npix2nside(hpmap.shape[0])
     n = hpmap.shape[0]
-    
+
     cov = sigma*sigma*exp_cov(nside, wn_rel_amp, lambda_angular, nest=nest)
 
     x = hpmap - mu
@@ -149,8 +149,8 @@ def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
     """
     npix = map.shape[0]
     nside = hp.npix2nside(npix)
-    
-    lmax = 4*nside
+
+    lmax = 4*nside - 1
     ls = np.arange(0, lmax, dtype=np.int)
 
     cl = exp_cov_cl(nside, wn_rel_amp, lambda_angular)
@@ -163,7 +163,7 @@ def map_logprior_cl(map, mu, sigma, wn_rel_amp, lambda_angular):
     alm_map0 = hp.map2alm(map0, lmax=lmax)
     alm_map0_white = hp.almxfl(alm_map0, 1.0/np.sqrt(cl))
 
-    return -0.5*N*np.log(2.0*np.pi) - N*np.log(sigma) - 0.5*np.sum(nl*np.log(cl)) - 0.5*np.sum(alm_map0_white*np.conj(alm_map0_white)/(sigma*sigma))
+    return -0.5*N*np.log(2.0*np.pi) - N*np.log(sigma) - 0.5*np.sum(nl*np.log(cl)) - 0.5*np.real(np.sum(alm_map0_white*np.conj(alm_map0_white)/(sigma*sigma)))
 
 def draw_map(nside, mu, sigma, wn_rel_amp, lambda_spatial, nest=False):
     """Returns a map sampled from the Gaussian process with the given
@@ -214,7 +214,7 @@ def resolve(pix, new_nside, nest=False):
             # Interpolate up one resolution
             nnew = hp.nside2npix(nside*2)
             inew = np.arange(0, nnew, dtype=np.int)
-            
+
             new_pix = np.zeros(nnew)
 
             new_pix = pix[inew//4]
@@ -230,4 +230,4 @@ def resolve(pix, new_nside, nest=False):
             new_pix = 0.25*(pix[::4] + pix[1::4] + pix[2::4] + pix[3::4])
 
             return resolve(new_pix, new_nside, nest=nest)
-            
+

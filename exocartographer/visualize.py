@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from matplotlib import animation
 import healpy as hp
 
-import exocartographer.gp_illumination_map as gim
+import exocartographer.gp_cl_illumination_map as gim
 import exocartographer.gp_map as gm
 
 from IPython.display import display, clear_output
@@ -162,7 +162,7 @@ def powell(logpost, p0, view='orth', lookback=5):
 
         xlow, xhigh = min(logpost.times), max(logpost.times)
 
-        probs = (logpost(pbest), logpost.log_prior(pbest), logpost.log_mapmarg_likelihood(pbest))
+        probs = (logpost(pbest), logpost.log_prior(pbest))
         history.append(pbest)
         lnprobs.append(probs)
 
@@ -170,7 +170,7 @@ def powell(logpost, p0, view='orth', lookback=5):
         for i in range(0, lookback):
             try:
                 p = history[-(i+1)]
-                lc = logpost.lightcurve_map(np.concatenate((p, logpost.mbar(p))))
+                lc = logpost.lightcurve(p)
                 ax1.plot(logpost.times, lc, color='b', alpha=1-i*1./lookback)
                 ax2.plot(logpost.times, (logpost.intensity - lc)/(logpost.error_scale(p)*logpost.sigma_intensity), color='b', alpha=1-i*1./lookback)
             except IndexError:
@@ -185,10 +185,11 @@ def powell(logpost, p0, view='orth', lookback=5):
 
         low, high = len(history)-min(lookback, len(history)), len(history)
         xs = np.arange(low, high)
-        lines = ax3.plot(xs, history[low:high]);
-        ax3.legend(lines, params)
+        for param in params:
+            ax3.plot(xs, [logpost.to_params(p)[param] for p in history[low:high]], label=param);
+        ax3.legend()
         lines = ax4.plot(xs, lnprobs[-min(lookback, len(lnprobs)):])
-        ax4.legend(lines, ['log(post)', 'log(prior)', 'log(like)'])
+        ax4.legend(lines, ['log(post)', 'log(prior)'])
         ax3.set_xlabel('steps')
         ax4.set_xlabel('steps')
         ax3.set_ylabel('param')
@@ -198,7 +199,7 @@ def powell(logpost, p0, view='orth', lookback=5):
         display(fig2)
 
         fig3.clear()
-        projector(logpost.mbar(pbest), view=this_view, fig=3)
+        projector(logpost.hpmap(pbest), view=this_view, fig=3)
         display(fig3)
 
         display(probs)

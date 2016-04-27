@@ -1,6 +1,7 @@
 import gp_clouds
 import gp_emission_map
 import gp_illumination_map
+import gp_alm_illumination_map
 import gp_map
 import toy_model
 import util
