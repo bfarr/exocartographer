@@ -12,6 +12,7 @@ class EmissionMapPosterior(object):
         self._sigma_intensity = sigma_intensity
         self._nside = nside
         self._ntimes = times.shape[0]
+        self._fix_dict = {}
 
     @property
     def times(self):
@@ -53,22 +54,103 @@ class EmissionMapPosterior(object):
     def ntimes(self):
         return self._ntimes
 
+    def fix(self, var, value):
+        if var in self.alternate_varnames:
+            k,m = self.alternate_varnames[var]
+            self._fix_dict[k] = m(value)
+        else:
+            self._fix_dict[var] = value
+
+    def free(self, var):
+        if var in self.alternate_varnames:
+            k, m = self.alternate_varnames[var]
+            del self._fix_dict[k]
+        else:
+            del self._fix_dict[var]
+
+    def freeall(self):
+        self._fix_dict = {}
+
+    @property
+    def varnames(self):
+        return ['mu', 'log_sigma', 'logit_wn_rel_amp', 'logit_spatial_scale', 'log_period', 'logit_cos_theta', 'log_intensity_map']
+        
+    @property
+    def alternate_varnames(self):
+        return {'sigma': ('log_sigma', np.log),
+                'wn_rel_amp': ('logit_wn_rel_amp', lambda wra: logit(wra, self.wn_low, self.wn_high)),
+                'spatial_scale': ('logit_spatial_scale', lambda ss: logit(ss, self.spatial_scale_low, self.spatial_scale_high)),
+                'period': ('log_period', np.log),
+                'cos_theta': ('logit_cos_theta', logit),
+                'theta': ('logit_cos_theta', lambda x: logit(cos(x))),
+                'intensity_map': ('log_intensity_map', np.log)}
+
+    @property
+    def fulldtype(self):
+        d = self._fix_dict
+
+        self._fix_dict = {}
+        dt = self.dtype
+        self._fix_dict = d
+
+        return dt
+
     @property
     def dtype(self):
-        return np.dtype([('mu', np.float),
-                         ('log_sigma', np.float),
-                         ('logit_wn_rel_amp', np.float),
-                         ('logit_spatial_scale', np.float),
-                         ('log_period', np.float),
-                         ('logit_cos_theta', np.float),
-                         ('log_intensity_map', np.float, self.npix)])
+
+        dtl = []
+
+        for n in self.varnames:
+            if n not in self._fix_dict:
+                if n == 'log_intensity_map':
+                    dtl.append((n, np.float, self.npix))
+                else:
+                    dtl.append((n, np.float))
+
+        return np.dtype(dtl)
 
     @property
     def nparams(self):
-        return 6 + self.npix
+
+        np = 0
+        for n in self.varnames:
+            if n not in self._fix_dict:
+                if n == 'log_intensity_map':
+                    np += self.npix
+                else:
+                    np += 1
+                    
+        return np
+
+    @property
+    def fullnparams(self):
+        d = self._fix_dict
+
+        self._fix_dict = {}
+        n = self.nparams
+        self._fix_dict = d
+
+        return n
 
     def to_params(self, p):
-        return np.atleast_1d(p).view(self.dtype).squeeze()
+        if p.dtype == self.fulldtype:
+            return p
+        else:
+            pp = np.atleast_1d(p).view(self.dtype).squeeze()
+
+            d = self._fix_dict
+
+            self._fix_dict = {}
+            pall = np.zeros(self.nparams).view(self.dtype)
+            self._fix_dict = d
+
+            for n in pall.dtype.names:
+                if n in self._fix_dict:
+                    pall[n] = self._fix_dict[n]
+                else:
+                    pall[n] = pp[n]
+
+            return pall.squeeze()
 
     def cos_theta(self, p):
         p = self.to_params(p)
@@ -131,6 +213,8 @@ class EmissionMapPosterior(object):
     def intensity_series(self, p):
         return np.logaddexp.reduce(self.spatial_intensity_series(p), axis=1)
 
+    lightcurve = intensity_series
+
     def logmapprior(self, p):
         p = self.to_params(p)
 
@@ -138,7 +222,7 @@ class EmissionMapPosterior(object):
         wn_rel_amp = inv_logit(p['logit_wn_rel_amp'], low=self.wn_low, high=self.wn_high)
         sp_scale = self.spatial_scale(p)
 
-        return gm.map_logprior(p['log_intensity_map'], p['mu'], sigma, wn_rel_amp, sp_scale)
+        return gm.map_logprior_cl(p['log_intensity_map'], p['mu'], sigma, wn_rel_amp, sp_scale)
 
     def logpdata(self, p):
         p = self.to_params(p)
@@ -147,7 +231,7 @@ class EmissionMapPosterior(object):
 
         return np.sum(ss.norm.logpdf(self.intensity, loc=log_ints, scale=self.sigma_intensity))
 
-    def logprior(self, p):
+    def log_prior(self, p):
         p = self.to_params(p)
 
         lp = 0.0
@@ -164,6 +248,13 @@ class EmissionMapPosterior(object):
 
 
     def __call__(self, p):
-        lp = self.logpdata(p) + self.logmapprior(p) + self.logprior(p)
+        lp = self.logpdata(p) + self.logmapprior(p) + self.log_prior(p)
 
         return lp
+
+    # Needed for visualization
+    def error_scale(self, p):
+        return 1.0
+
+    def hpmap(self, p):
+        return np.exp(self.to_params(p)['log_intensity_map'])

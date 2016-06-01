@@ -13,7 +13,7 @@ from matplotlib import pyplot as plt
 from matplotlib import animation
 import healpy as hp
 
-import exocartographer.gp_cl_illumination_map as gim
+import exocartographer.gp_alm_illumination_map as gim
 import exocartographer.gp_map as gm
 
 from IPython.display import display, clear_output
@@ -224,5 +224,92 @@ def powell(logpost, p0, view='orth', lookback=5):
     plt.close(fig3)
     return pbest
 
+## DRY VIOLATION: copied from above.  Clean this up!
+def differential_evolution(logpost, bounds, view='orth', lookback=5):
+    pbests = []
+
+    def cb(x, convergence=None):
+        clear_output(wait=True)
+
+        pbests.append(x)
+        pbest = x
+
+        fig1 = plt.figure(num=1)
+        ax1, ax2 = fig1.get_axes()
+
+        fig2 = plt.figure(num=2)
+        ax3, ax4 = fig2.get_axes()
+
+        fig3 = plt.figure(num=3)
+
+        ax1.cla()
+        ax2.cla()
+        ax3.cla()
+        ax4.cla()
+
+        xlow, xhigh = min(logpost.times), max(logpost.times)
+
+        probs = (logpost(pbest), logpost.log_prior(pbest))
+        history.append(pbest)
+        lnprobs.append(probs)
+
+        ax1.errorbar(logpost.times, logpost.intensity, logpost.sigma_intensity, color='k', lw=1.5, capthick=0)
+        for i in range(0, lookback):
+            try:
+                p = history[-(i+1)]
+                lc = logpost.lightcurve(p)
+                ax1.plot(logpost.times, lc, color='b', alpha=1-i*1./lookback)
+                ax2.plot(logpost.times, (logpost.intensity - lc)/(logpost.error_scale(p)*logpost.sigma_intensity), color='b', alpha=1-i*1./lookback)
+            except IndexError:
+                pass
+        ax2.plot((xlow, xhigh), (0, 0), color='k', ls='--', alpha=0.5)
+        ax1.set_xlim(xlow, xhigh)
+        ax2.set_xlim(xlow, xhigh)
+        ax1.set_xlabel('time')
+        ax1.set_ylabel('intensity')
+        ax2.set_xlabel('time')
+        ax2.set_ylabel('standardized residual')
+
+        low, high = len(history)-min(lookback, len(history)), len(history)
+        xs = np.arange(low, high)
+        for param in params:
+            ax3.plot(xs, [logpost.to_params(p)[param] for p in history[low:high]], label=param);
+        ax3.legend()
+        lines = ax4.plot(xs, lnprobs[-min(lookback, len(lnprobs)):])
+        ax4.legend(lines, ['log(post)', 'log(prior)'])
+        ax3.set_xlabel('steps')
+        ax4.set_xlabel('steps')
+        ax3.set_ylabel('param')
+        ax4.set_ylabel('log PDF')
+
+        display(fig1)
+        display(fig2)
+
+        fig3.clear()
+        projector(logpost.hpmap(pbest), view=this_view, fig=3)
+        display(fig3)
+
+        display(probs)
+
+    history = []
+    lnprobs = []
+    params = logpost.dtype.names
+
+    this_view = view
+
+    fig1, _ = plt.subplots(2, 1, num=1, figsize=(16, 8))
+    fig2, _ = plt.subplots(1, 2, num=2, figsize=(16, 4))
+    fig3 = plt.figure(num=3)
+
+    try:
+        res = so.differential_evolution(lambda x: -logpost(x), bounds, callback=cb)
+        pbest = res.x
+    except KeyboardInterrupt:
+        return pbests[-1]
+
+    plt.close(fig1)
+    plt.close(fig2)
+    plt.close(fig3)
+    return pbest
 
 
