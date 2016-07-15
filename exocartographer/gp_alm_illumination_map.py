@@ -551,18 +551,27 @@ class IlluminationMapPosterior(object):
 
         return map_lc
 
+    def log_map_prior(self, p):
+        p = self.to_params(p)
+
+        hpmap = self.hpmap(p)
+        if hpmap.min() < 0. or hpmap.max() > 1.:
+            return -np.inf
+
+        log_mapp = map_logprior_cl(hpmap, p['mu'], self.sigma(p), self.wn_rel_amp(p), self.spatial_scale(p))
+        return log_mapp
+
     def loglikelihood(self, p):
         p = self.to_params(p)
 
-        errsc = np.exp(p['log_error_scale'])
+        errsc = self.error_scale(p)
 
         V = self.resolved_visibility_illumination_matrix(p)
 
-        hpmap = self.hpmap(p)
 
-        log_mapp = map_logprior_cl(hpmap, p['mu'], np.exp(p['log_sigma']), self.wn_rel_amp(p), self.spatial_scale(p))
+        log_mapp = self.log_map_prior(p)
 
-        map_lc = np.dot(V, hpmap)
+        map_lc = np.dot(V, self.hpmap(p))
 
         residual = self.intensity - map_lc
         sigmas = self.sigma_intensity
@@ -576,7 +585,10 @@ class IlluminationMapPosterior(object):
         return log_datap + log_mapp
 
     def __call__(self, p):
-        return self.log_prior(p) + self.loglikelihood(p)
+        logp = self.loglikelihood(p)
+        if np.isfinite(logp):
+            logp += self.log_prior(p)
+        return logp
 
     def draw_map(self, p):
         return draw_map_cl(self.nside, p['mu'], np.exp(p['log_sigma']), self.wn_rel_amp(p), self.spatial_scale(p))
