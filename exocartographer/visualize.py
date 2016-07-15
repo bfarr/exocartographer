@@ -54,7 +54,7 @@ def inline_ipynb():
 
     animation.Animation._repr_html_ = anim_to_html
 
-def projector(map, map_min=None, map_max=None, view='orth', cmap='gray', flip='geo', title="", **kwargs):
+def projector(map, map_min=0, map_max=1, view='orth', cmap='gray', flip='geo', title="", **kwargs):
     """Convenient function for plotting healpy projections.
 
     :param map: Array to plot as a healpy map.
@@ -79,26 +79,16 @@ def projector(map, map_min=None, map_max=None, view='orth', cmap='gray', flip='g
     except AttributeError:
         print "ERROR: Couldn't find hp.{}view".format(view)
 
-    if map_min is None:
-        map_min = np.min(map)
-    if map_max is None:
-        map_max = np.max(map)
-
     proj(map, cmap=cmap, flip=flip, min=map_min, max=map_max, title=title, **kwargs)
 
 
-def illuminate(logpost, params, map, map_min=None, map_max=None, fignum=1):
+def illuminate(logpost, params, map, map_min=0, map_max=1, fignum=1, **kwargs):
     """Generate a movie showing the visibility illumination of the map in time."""
     maps = logpost.visibility_illumination_maps(np.concatenate((params, map)))
-    if map_min is None:
-        map_min = np.min(maps)
-    if map_max is None:
-        map_max = np.max(maps)
-
     fig = plt.figure(fignum)
     def f(i):
         fig.clf()
-        projector(maps[i,:], map_min, map_max, fig=fignum)
+        projector(maps[i,:], map_min, map_max, fig=fignum, **kwargs)
 
     display(animation.FuncAnimation(fig, f, frames=maps.shape[0]))
     plt.close(fig)
