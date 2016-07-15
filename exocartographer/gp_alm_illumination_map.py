@@ -5,6 +5,7 @@ import scipy.linalg as sl
 import scipy.stats as ss
 from util import logit, inv_logit, flat_logit_log_prior
 from gp_map import draw_map_cl, map_logprior_cl
+from analytic_kernel import viewgeom, kernel
 
 def quaternion_multiply(qa, qb):
     result = np.zeros(np.broadcast(qa, qb).shape)
@@ -402,7 +403,29 @@ class IlluminationMapPosterior(object):
 
         area = hp.nside2pixarea(self.nside_illum)
 
-        return area*cos_factors
+        return area * cos_factors/np.pi
+
+    #TODO: rename phi_rot to obl_orientation
+    def analytic_visibility_illumination_matrix(self, p):
+        omega_rot = 2.0*np.pi/self.rotation_period(p)
+        obl = self.obl(p)
+        obl_orientation = self.phi_rot(p)
+        omega_orb = 2.0*np.pi/self.orbital_period(p)
+        phi_orb = self.phi_orb(p)
+        inc = self.inc(p)
+
+        lon, lat = hp.pix2ang(self.nside_illum, np.arange(0, self.npix_illum))
+        sinth = np.sin(lat)
+        costh = np.cos(lat)
+        sinph = np.sin(lon)
+        cosph = np.cos(lon)
+
+        #Getting sub_obs and sub_st trig values
+        all_trigs = viewgeom(self.times, omega_rot, omega_orb, obl, inc, obl_orientation, phi_orb)
+
+        area = hp.nside2pixarea(self.nside_illum)
+
+        return area * kernel(sinth, costh, sinph, cosph, all_trigs).T
 
     def _body_frame_quaternions(self, p, times):
         p = self.to_params(p)
@@ -438,6 +461,7 @@ class IlluminationMapPosterior(object):
 
     def resolved_visibility_illumination_matrix(self, p):
         V = self.visibility_illumination_matrix(p)
+        #V = self.analytic_visibility_illumination_matrix(p)
 
         assert self.nside_illum >= self.nside, 'resolution mismatch: nside > nside_illum'
 
