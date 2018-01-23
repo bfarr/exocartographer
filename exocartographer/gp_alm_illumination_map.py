@@ -163,7 +163,7 @@ class IlluminationMapPosterior(object):
 
     @property
     def wn_high(self):
-        return 100.0
+        return 0.99
 
     @property
     def spatial_scale_low(self):
