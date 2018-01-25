@@ -77,7 +77,7 @@ def projector(map, map_min=0, map_max=1, view='orth', cmap='gray', flip='geo', t
     try:
         proj = getattr(hp, view+'view')
     except AttributeError:
-        print "ERROR: Couldn't find hp.{}view".format(view)
+        print("ERROR: Couldn't find hp.{}view".format(view))
 
     proj(map, cmap=cmap, flip=flip, min=map_min, max=map_max, title=title, **kwargs)
 
