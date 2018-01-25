@@ -44,7 +44,7 @@ def gaussian_cov(times, nside, lambda_spatial, lambda_time, nest=False):
     vecs = np.column_stack((x, y, z))
 
     spatial_angles2 = np.sum(vecs[np.newaxis, ...]*vecs[:, np.newaxis, :], axis=2)
-    print spatial_angles2[(spatial_angles2 > 1.0) | (spatial_angles2 < -1.0)]
+    print(spatial_angles2[(spatial_angles2 > 1.0) | (spatial_angles2 < -1.0)])
     spatial_angles2[spatial_angles2 > 1] = 1.0
     spatial_angles2[spatial_angles2 < -1] = -1.0
     spatial_angles2 = np.square(np.arccos(spatial_angles2))
