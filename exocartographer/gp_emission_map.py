@@ -1,9 +1,9 @@
-import gp_map as gm
+from . import gp_map as gm
 import healpy as hp
 import numpy as np
 import scipy.linalg as sl
 import scipy.stats as ss
-from util import logit, inv_logit, flat_logit_log_prior
+from .util import logit, inv_logit, flat_logit_log_prior
 
 class EmissionMapPosterior(object):
     def __init__(self, times, intensity, sigma_intensity, nside=4):
