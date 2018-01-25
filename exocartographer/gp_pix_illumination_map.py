@@ -1,11 +1,11 @@
-import gp_map as gm
+from . import gp_map as gm
 import healpy as hp
 import numpy as np
 import scipy.linalg as sl
 import scipy.stats as ss
-from util import logit, inv_logit, flat_logit_log_prior
-from gp_map import draw_map_cl, map_logprior_cl
-from analytic_kernel import viewgeom, kernel
+from .util import logit, inv_logit, flat_logit_log_prior
+from .gp_map import draw_map_cl, map_logprior_cl
+from .analytic_kernel import viewgeom, kernel
 
 def quaternion_multiply(qa, qb):
     result = np.zeros(np.broadcast(qa, qb).shape)

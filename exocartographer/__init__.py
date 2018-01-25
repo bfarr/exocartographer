@@ -1,11 +1,11 @@
-import gp_clouds
-import gp_emission_map
-import gp_illumination_map
-import gp_alm_illumination_map
-import gp_pix_illumination_map
-import gp_map
-import toy_model
-import util
-import visualize
+from . import gp_clouds
+from . import gp_emission_map
+from . import gp_illumination_map
+from . import gp_alm_illumination_map
+from . import gp_pix_illumination_map
+from . import gp_map
+from . import toy_model
+from . import util
+from . import visualize
 
 __version__ = "0.0.1"
