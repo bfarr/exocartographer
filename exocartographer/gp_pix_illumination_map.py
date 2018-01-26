@@ -599,3 +599,20 @@ class IlluminationMapPosterior(object):
         longs[longs < 0] += 2*np.pi
 
         return np.pi/2.0-colats, longs
+
+class IlluminationMapPrior(IlluminationMapPosterior):
+    def __init__(self, *args, **kwargs):
+        super(IlluminationMapPrior, self).__init__(*args, **kwargs)
+
+    def __call__(self, p):
+        if np.isfinite(self.loglikelihood(p)):
+            return self.log_prior(p)
+        else:
+            return -np.inf
+
+class IlluminationMapLikelihood(IlluminationMapPosterior):
+    def __init__(self, *args, **kwargs):
+        super(IlluminationMapLikelihood, self).__init__(*args, **kwargs)
+
+    def __call__(self, p):
+        return self.loglikelihood(p)
