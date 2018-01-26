@@ -143,7 +143,7 @@ def maximize(logpost, p0, method='powell', ftol=None, view='orth', lookback=5, e
 
         fig1 = plt.figure(num=1)
         axs = fig1.get_axes()
-        ax1, ax2 = axs[:len(axs)/2], axs[len(axs)/2:]
+        ax1, ax2 = axs[:len(axs)//2], axs[len(axs)//2:]
 
         fig2 = plt.figure(num=2)
         ax3, ax4 = fig2.get_axes()
