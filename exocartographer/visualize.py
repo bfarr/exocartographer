@@ -13,9 +13,6 @@ from matplotlib import pyplot as plt
 from matplotlib import animation
 import healpy as hp
 
-import exocartographer.gp_alm_illumination_map as gim
-import exocartographer.gp_map as gm
-
 from IPython.display import display, clear_output
 
 def anim_to_html(anim):
@@ -128,7 +125,7 @@ def draw_pos_maps(logpost, pbest, proj='orth', show=True, nmaps=None, fignum=1):
     return maps
 
 
-def maximize(logpost, p0, method='powell', ftol=None, view='orth', lookback=5, epoch_starts=None, epoch_duration=np.inf, **kwargs):
+def maximize(logpost, p0, method='powell', ftol=0.01, view='orth', lookback=5, epoch_starts=None, epoch_duration=np.inf, **kwargs):
     pbests = [p0]
 
     if ftol is None:
@@ -305,7 +302,7 @@ def sample(logpost, p0, ftol=None, view='orth', lookback=5, epoch_starts=None, e
         for param in params:
             ax3.plot(xs, [logpost.to_params(p)[param] for p in history[low:high]], label=param);
         ax3.legend(loc='lower left', frameon=False)
-        lines = ax4.plot(xs[:-1], np.diff(lnprobs[-min(lookback, len(lnprobs)):], axis=0)/lnprobs[-1])
+        lines = ax4.plot(xs[1:], np.diff(lnprobs[-min(lookback, len(lnprobs)):], axis=0)/lnprobs[-1])
         ax4.legend(lines, ['likelihood', 'prior'], loc='lower left', frameon=False)
         ax3.set_xlabel('steps')
         ax4.set_xlabel('steps')
@@ -342,7 +339,6 @@ def sample(logpost, p0, ftol=None, view='orth', lookback=5, epoch_starts=None, e
             #p, prob, _ = sampler.run_mcmc(p, nskip)
             p, prob, _ = sampler.run_mcmc(nskip, p)
             delta_p = cb(p, prob)
-            print(delta_p)
     except KeyboardInterrupt:
         return pbests[-1]
 
