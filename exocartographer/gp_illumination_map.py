@@ -4,6 +4,8 @@ import numpy as np
 import scipy.linalg as sl
 import scipy.stats as ss
 from .util import logit, inv_logit, flat_logit_log_prior
+from .gp_map import draw_map_cl, map_logprior_cl
+from .analytic_kernel import viewgeom, kernel
 
 def quaternion_multiply(qa, qb):
     result = np.zeros(np.broadcast(qa, qb).shape)
@@ -66,6 +68,14 @@ class IlluminationMapPosterior(object):
         return self._nside
 
     @property
+    def lmax(self):
+        return self.nside*4 - 1
+
+    @property
+    def mmax(self):
+        return self.lmax
+
+    @property
     def nside_illum(self):
         return self._nside_illum
 
@@ -85,11 +95,11 @@ class IlluminationMapPosterior(object):
                     'log_rotation_period', 'log_orbital_period',
                     'logit_phi_orb', 'logit_cos_obl', 'logit_phi_rot',
                     'logit_cos_inc']
-    
+
     @property
     def full_dtype(self):
         return np.dtype([(n, np.float) for n in self._param_names])
-    
+
     @property
     def dtype(self):
         if self.fixed_params is None:
@@ -112,15 +122,15 @@ class IlluminationMapPosterior(object):
                        if param not in self.fixed_params]
 
             typel = [(n, np.float) for n in self._param_names
-                     if n not in self.fixed_params and 'log_albedo_map' not in n]
+                     if n not in self.fixed_params and 'map' not in n]
 
-        typel.append(('log_albedo_map', np.float, self.npix))
+        typel.append(('map', np.float, self.npix))
         return np.dtype(typel)
 
     @property
     def full_dtype_map(self):
         typel = [(n, np.float) for n in self._param_names]
-        typel.append(('log_albedo_map', np.float, self.npix))
+        typel.append(('map', np.float, self.npix))
         return np.dtype(typel)
 
     @property
@@ -133,7 +143,7 @@ class IlluminationMapPosterior(object):
             return self.nparams_full
         else:
             return self.nparams_full - len(self.fixed_params)
-    
+
     @property
     def nparams_full_map(self):
         return self.nparams_full + self.npix
@@ -148,7 +158,7 @@ class IlluminationMapPosterior(object):
 
     @property
     def wn_high(self):
-        return 100.0
+        return 0.99
 
     @property
     def spatial_scale_low(self):
@@ -160,7 +170,7 @@ class IlluminationMapPosterior(object):
 
     def error_scale(self, p):
         return np.exp(self.to_params(p)['log_error_scale'])
-    
+
     def sigma(self, p):
         p = self.to_params(p)
 
@@ -209,7 +219,7 @@ class IlluminationMapPosterior(object):
                        'cos_obl': (0, 1),
                        'phi_rot': (0, 2*np.pi),
                        'cos_inc': (0, 1)}
-        log_names = set(['err_scale', 'sigma', 'rotation_period', 'orbital_period', 'albedo_map'])
+        log_names = set(['err_scale', 'sigma', 'rotation_period', 'orbital_period'])
 
         for n, x in dict.items():
             if n in p.dtype.names:
@@ -254,6 +264,7 @@ class IlluminationMapPosterior(object):
                     elif p.shape[-1] == self.nparams_map:
                         return self.to_params(p.view(self.dtype_map).squeeze())
                     else:
+                        print(p.shape[-1], self.nparams_map)
                         raise ValueError("to_params: bad parameter dimension")
         else:
             p = np.atleast_1d(p)
@@ -262,12 +273,16 @@ class IlluminationMapPosterior(object):
     def add_map_to_full_params(self, p, map):
         return self._add_map(p, map)
 
-    def params_map_to_params(self, pm):
+    def params_map_to_params(self, pm, include_fixed_params=False):
         pm = self.to_params(pm)
         pp = self.to_params(np.zeros(self.nparams))
 
         for n in pp.dtype.names:
             pp[n] = pm[n]
+
+        if not include_fixed_params:
+            unfixed_params = [p for p in pp.dtype.names if p not in self.fixed_params]
+            pp = pp[unfixed_params]
 
         return pp
 
@@ -356,15 +371,15 @@ class IlluminationMapPosterior(object):
         sin_phi_orb = np.sin(phi_orb)
 
         omega_orb = 2.0*np.pi/np.exp(p['log_orbital_period'])
-        
+
         no = self._observer_normal_orbit_coords(p)
         ns = np.array([-cos_phi_orb, -sin_phi_orb, 0.0])
-        
+
         orb_quats = rotation_quaternions(np.array([0.0, 0.0, 1.0]), -omega_orb*self.times)
 
         to_body_frame_quats = self._body_frame_quaternions(p, self.times)
         star_to_bf_quats = quaternion_multiply(to_body_frame_quats,orb_quats)
-        
+
         nos = rotate_vector(to_body_frame_quats, no)
         nss = rotate_vector(star_to_bf_quats, ns)
 
@@ -383,7 +398,29 @@ class IlluminationMapPosterior(object):
 
         area = hp.nside2pixarea(self.nside_illum)
 
-        return area*cos_factors
+        return area * cos_factors/np.pi
+
+    #TODO: rename phi_rot to obl_orientation
+    def analytic_visibility_illumination_matrix(self, p):
+        omega_rot = 2.0*np.pi/self.rotation_period(p)
+        obl = self.obl(p)
+        obl_orientation = self.phi_rot(p)
+        omega_orb = 2.0*np.pi/self.orbital_period(p)
+        phi_orb = self.phi_orb(p)
+        inc = self.inc(p)
+
+        lon, lat = hp.pix2ang(self.nside_illum, np.arange(0, self.npix_illum))
+        sinth = np.sin(lat)
+        costh = np.cos(lat)
+        sinph = np.sin(lon)
+        cosph = np.cos(lon)
+
+        #Getting sub_obs and sub_st trig values
+        all_trigs = viewgeom(self.times, omega_rot, omega_orb, obl, inc, obl_orientation, phi_orb)
+
+        area = hp.nside2pixarea(self.nside_illum)
+
+        return area * kernel(sinth, costh, sinph, cosph, all_trigs).T
 
     def _body_frame_quaternions(self, p, times):
         p = self.to_params(p)
@@ -399,7 +436,7 @@ class IlluminationMapPosterior(object):
         sin_phi_rot = np.sin(phi_rot)
 
         omega_rot = 2.0*np.pi/np.exp(p['log_rotation_period'])
-        
+
         S = np.array([cos_phi_rot*sin_obl, sin_phi_rot*sin_obl, cos_obl])
 
         spin_rot_quat = quaternion_multiply(rotation_quaternions(np.array([0.0, 1.0, 0.0]), -obl), \
@@ -416,9 +453,10 @@ class IlluminationMapPosterior(object):
         sin_inc = np.sqrt(1.0 - cos_inc*cos_inc)
 
         return np.array([-sin_inc, 0.0, cos_inc])
-        
+
     def resolved_visibility_illumination_matrix(self, p):
         V = self.visibility_illumination_matrix(p)
+        #V = self.analytic_visibility_illumination_matrix(p)
 
         assert self.nside_illum >= self.nside, 'resolution mismatch: nside > nside_illum'
 
@@ -433,13 +471,6 @@ class IlluminationMapPosterior(object):
             V = np.array(hp.reorder(V, n2r=True))
 
             return V
-
-    def visibility_illumination_maps(self, p):
-        p = self.to_params(p)
-        return np.exp(p['log_albedo_map'])*self.resolved_visibility_illumination_matrix(p)
-
-    def lightcurve_map(self, p):
-        return np.sum(self.visibility_illumination_maps(p), axis=1)
 
     def log_prior(self, p):
         p = self.to_params(p)
@@ -466,7 +497,7 @@ class IlluminationMapPosterior(object):
         lp += flat_logit_log_prior(p['logit_cos_obl'], low=0, high=1)
         lp += flat_logit_log_prior(p['logit_phi_rot'], low=0, high=2*np.pi)
         lp += flat_logit_log_prior(p['logit_cos_inc'], low=0, high=1)
-        
+
         return lp
 
     def log_period_prior(self, logP):
@@ -482,24 +513,6 @@ class IlluminationMapPosterior(object):
         lp -= np.log(2. + logT - logdt)
 
         return lp
-
-    def log_pdata_map(self, p):
-        p = self.to_params(p)
-
-        lightcurve = self.lightcurve_map(p)
-
-        errsc = np.exp(p['log_error_scale'])
-        
-        return np.sum(ss.norm.logpdf(self.intensity, loc=lightcurve, scale=self.sigma_intensity*errsc))
-
-    def log_pmap_map(self, p):
-        p = self.to_params(p)
-
-        sigma = np.exp(p['log_sigma'])
-        wn_rel_amp = self.wn_rel_amp(p)
-        lambda_spatial = self.spatial_scale(p)
-
-        return gm.map_logprior(p['log_albedo_map'], p['mu'], sigma, wn_rel_amp, lambda_spatial)
 
     def gp_sigma_matrix(self, p):
         p = self.to_params(p)
@@ -517,57 +530,41 @@ class IlluminationMapPosterior(object):
             return np.diag(np.square(self.sigma_intensity))
         else:
             return np.diag(1.0/np.square(self.sigma_intensity))
-        
-    
-    def gamma_matrix(self, p, V=None):
+
+    def hpmap(self, p):
+        p = self.to_params(p)
+        return p['map']
+
+    def lightcurve(self, p):
         p = self.to_params(p)
 
-        Sigma = self.gp_sigma_matrix(p)
-
-        if V is None:
-            V = self.resolved_visibility_illumination_matrix(p)
-
-        sigma_matrix = self.data_sigma_matrix()
-
-        M = sigma_matrix + np.dot(V, np.dot(Sigma, V.T))
-
-        MM = np.linalg.solve(M, np.dot(V, Sigma))
-
-        MMM = np.dot(Sigma, np.dot(V.T, MM))
-
-        return Sigma - MMM
-
-
-    def mbar(self, p, gm=None, V=None):
-        p = self.to_params(p)
-
-        if gm is None:
-            gm = self.gamma_matrix(p)
-
-        Sigma = self.gp_sigma_matrix(p)
-
-        if V is None:
-            V = self.resolved_visibility_illumination_matrix(p)
-
-        dover_sigma = self.intensity/self.sigma_intensity/self.sigma_intensity
-
-        A = np.linalg.solve(Sigma, p['mu']*np.ones(Sigma.shape[0]))
-        B = np.dot(V.T, dover_sigma)
-
-        return np.dot(gm, A+B)
-
-    def log_mapmarg_likelihood(self, p):
-        p = self.to_params(p)
-
-        errsc = np.exp(p['log_error_scale'])
-        
         V = self.resolved_visibility_illumination_matrix(p)
-        gamma = self.gamma_matrix(p, V)
-        mbar = self.mbar(p, gamma, V)
+        hpmap = self.hpmap(p)
 
-        log_mapp = gm.map_logprior(mbar, p['mu'], np.exp(p['log_sigma']), self.wn_rel_amp(p), self.spatial_scale(p))
+        map_lc = np.dot(V, hpmap)
 
-        map_lc = np.dot(V, mbar)
+        return map_lc
+
+    def log_map_prior(self, p):
+        p = self.to_params(p)
+
+        hpmap = self.hpmap(p)
+        if hpmap.min() < 0. or hpmap.max() > 1.:
+            return -np.inf
+
+        log_mapp = map_logprior_cl(hpmap, p['mu'], self.sigma(p), self.wn_rel_amp(p), self.spatial_scale(p))
+        return log_mapp
+
+    def loglikelihood(self, p):
+        p = self.to_params(p)
+
+        errsc = self.error_scale(p)
+
+        V = self.resolved_visibility_illumination_matrix(p)
+
+        log_mapp = self.log_map_prior(p)
+
+        map_lc = np.dot(V, self.hpmap(p))
 
         residual = self.intensity - map_lc
         sigmas = self.sigma_intensity
@@ -575,28 +572,19 @@ class IlluminationMapPosterior(object):
         chi2 = np.sum(np.square(residual/(errsc*sigmas)))
 
         Nd = residual.shape[0]
-        Nm = mbar.shape[0]
-        
+
         log_datap = -0.5*Nd*np.log(2.0*np.pi) - np.sum(np.log(errsc*sigmas)) - 0.5*chi2
 
-        C = log_datap + log_mapp
-
-        gamma_eigs = np.linalg.eigvalsh(gamma)
-
-        return C + 0.5*Nm*np.log(2.0*np.pi) + 0.5*np.sum(np.log(np.abs(gamma_eigs)))
+        return log_datap + log_mapp
 
     def __call__(self, p):
-        return self.log_prior(p) + self.log_mapmarg_likelihood(p)
-
-    def log_posterior_map(self, p):
-        return self.log_prior(p) + self.log_pdata_map(p) + self.log_pmap_map(p)
+        logp = self.loglikelihood(p)
+        if np.isfinite(logp):
+            logp += self.log_prior(p)
+        return logp
 
     def draw_map(self, p):
-        V = self.resolved_visibility_illumination_matrix(p)
-        gamma = self.gamma_matrix(p, V)
-        mbar = self.mbar(p, gamma, V)
-
-        return np.random.multivariate_normal(mbar, gamma)
+        return draw_map_cl(self.nside, p['mu'], np.exp(p['log_sigma']), self.wn_rel_amp(p), self.spatial_scale(p))
 
     def sub_observer_latlong(self, p, times):
         no = self._observer_normal_orbit_coords(p)
@@ -612,29 +600,19 @@ class IlluminationMapPosterior(object):
 
         return np.pi/2.0-colats, longs
 
-    def log_posterior_fixed_map(self, p, log_map):
-        p = self.to_params(p)
+class IlluminationMapPrior(IlluminationMapPosterior):
+    def __init__(self, *args, **kwargs):
+        super(IlluminationMapPrior, self).__init__(*args, **kwargs)
 
-        pp = np.zeros(self.nparams_full + self.npix)
-        pp = pp.view(self.full_dtype_map)
+    def __call__(self, p):
+        if np.isfinite(self.loglikelihood(p)):
+            return self.log_prior(p)
+        else:
+            return -np.inf
 
-        for n in p.dtype.names:
-            pp[n] = p[n]
-        pp['log_albedo_map'] = log_map
+class IlluminationMapLikelihood(IlluminationMapPosterior):
+    def __init__(self, *args, **kwargs):
+        super(IlluminationMapLikelihood, self).__init__(*args, **kwargs)
 
-        return self.log_pdata_map(pp) + self.log_prior(p) + self.log_pmap_map(pp)
-    
-    def log_posterior_fixed_params(self, log_map, V, cho_factor_sigma, p):
-        p = self.to_params(p)
-
-        error_scale = self.error_scale(p)
-
-        lc = np.dot(V, np.exp(log_map))
-
-        resid = self.intensity - lc
-        chi2_data = np.sum(np.square(resid/(error_scale*self.sigma_intensity)))
-
-        x = log_map - p['mu']
-        chi2_map = np.dot(x, sl.cho_solve(cho_factor_sigma, x))
-
-        return -0.5*(chi2_data + chi2_map)
+    def __call__(self, p):
+        return self.loglikelihood(p)
