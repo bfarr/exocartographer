@@ -160,18 +160,18 @@ def maximize(logpost, p0, method='powell', ftol=0.01, view='orth', lookback=5, e
 
         for ax, epoch_start in zip(ax1, epoch_starts):
             sel = (logpost.times >= epoch_start) & (logpost.times - epoch_start < epoch_duration)
-            ax.errorbar(logpost.times[sel], logpost.intensity[sel], logpost.sigma_intensity[sel], color='k', lw=1.5, fmt='o', markersize=0, capthick=0)
+            ax.errorbar(logpost.times[sel], logpost.reflectance[sel], logpost.sigma_reflectance[sel], color='k', lw=1.5, fmt='o', markersize=0, capthick=0)
 
         looking_back = min(len(history), lookback)
-        colors = [plt.get_cmap('viridis')(x) for x in np.linspace(0., 1., looking_back)]
-        for i, color in zip(range(0, looking_back), colors):
+        colors = [plt.get_cmap('Blues')(x) for x in np.linspace(1., 0., lookback)]
+        for i in range(looking_back)[::-1]:
             try:
                 p = history[-(i+1)]
                 lc = logpost.lightcurve(p)
                 for a1, a2, epoch_start in zip(ax1, ax2, epoch_starts):
                     sel = (logpost.times >= epoch_start) & (logpost.times - epoch_start < epoch_duration)
-                    a1.plot(logpost.times[sel], lc[sel], color=color)
-                    a2.plot(logpost.times[sel], (logpost.intensity - lc)[sel]/(logpost.error_scale(p)*logpost.sigma_intensity)[sel], color=color)
+                    a1.plot(logpost.times[sel], lc[sel], color=colors[i])
+                    a2.plot(logpost.times[sel], (logpost.reflectance - lc)[sel]/(logpost.error_scale(p)*logpost.sigma_reflectance)[sel], color=colors[i])
                     a1.set_xlim(logpost.times[sel].min(), logpost.times[sel].max())
                     a2.set_xlim(logpost.times[sel].min(), logpost.times[sel].max())
             except IndexError:
@@ -271,7 +271,7 @@ def sample(logpost, p0, ftol=None, view='orth', lookback=5, epoch_starts=None, e
 
         for ax, epoch_start in zip(ax1, epoch_starts):
             sel = (logpost.times >= epoch_start) & (logpost.times - epoch_start < epoch_duration)
-            ax.errorbar(logpost.times[sel], logpost.intensity[sel], logpost.sigma_intensity[sel], color='k', lw=1.5, fmt='o', markersize=0, capthick=0)
+            ax.errorbar(logpost.times[sel], logpost.reflectance[sel], logpost.sigma_reflectance[sel], color='k', lw=1.5, fmt='o', markersize=0, capthick=0)
 
         for i in range(0, lookback):
             try:
@@ -284,7 +284,7 @@ def sample(logpost, p0, ftol=None, view='orth', lookback=5, epoch_starts=None, e
                     else:
                         color = 'b'
                     a1.plot(logpost.times[sel], lc[sel], color=color, alpha=1-i*1./lookback)
-                    a2.plot(logpost.times[sel], (logpost.intensity - lc)[sel]/(logpost.error_scale(p)*logpost.sigma_intensity)[sel], color=color, alpha=1-i*1./lookback)
+                    a2.plot(logpost.times[sel], (logpost.reflectance - lc)[sel]/(logpost.error_scale(p)*logpost.sigma_reflectance)[sel], color=color, alpha=1-i*1./lookback)
                     a1.set_xlim(logpost.times[sel].min(), logpost.times[sel].max())
                     a2.set_xlim(logpost.times[sel].min(), logpost.times[sel].max())
             except IndexError:
@@ -376,20 +376,20 @@ def differential_evolution(logpost, bounds, view='orth', lookback=5):
         history.append(pbest)
         lnprobs.append(probs)
 
-        ax1.errorbar(logpost.times, logpost.intensity, logpost.sigma_intensity, color='k', lw=1.5, capthick=0)
+        ax1.errorbar(logpost.times, logpost.reflectance, logpost.sigma_reflectance, color='k', lw=1.5, capthick=0)
         for i in range(0, lookback):
             try:
                 p = history[-(i+1)]
                 lc = logpost.lightcurve(p)
                 ax1.plot(logpost.times, lc, color='b', alpha=1-i*1./lookback)
-                ax2.plot(logpost.times, (logpost.intensity - lc)/(logpost.error_scale(p)*logpost.sigma_intensity), color='b', alpha=1-i*1./lookback)
+                ax2.plot(logpost.times, (logpost.reflectance - lc)/(logpost.error_scale(p)*logpost.sigma_reflectance), color='b', alpha=1-i*1./lookback)
             except IndexError:
                 pass
         ax2.plot((xlow, xhigh), (0, 0), color='k', ls='--', alpha=0.5)
         ax1.set_xlim(xlow, xhigh)
         ax2.set_xlim(xlow, xhigh)
         ax1.set_xlabel('time')
-        ax1.set_ylabel('intensity')
+        ax1.set_ylabel('reflectance')
         ax2.set_xlabel('time')
         ax2.set_ylabel('standardized residual')
 

@@ -1,11 +1,15 @@
-from . import gp_map as gm
-import healpy as hp
+from __future__ import division
+
 import numpy as np
-import scipy.linalg as sl
-import scipy.stats as ss
-from .util import logit, inv_logit, flat_logit_log_prior
+import healpy as hp
+
+from . import gp_map as gm
+
 from .gp_map import draw_map_cl, map_logprior_cl
+from .util import logit, inv_logit, flat_logit_log_prior
+
 from .analytic_kernel import viewgeom, kernel
+
 
 def quaternion_multiply(qa, qb):
     result = np.zeros(np.broadcast(qa, qb).shape)
@@ -40,28 +44,70 @@ def rotate_vector(rqs, v):
     return result[:,1:]
 
 class IlluminationMapPosterior(object):
-    def __init__(self, times, intensity, sigma_intensity, nside=4, nside_illum=16):
+    """A posterior class for mapping surfaces from a reflectance time series"
+
+    :param times:
+        Array of times of photometric measurements.
+
+    :param reflectance:
+        Array of photometric measurements at corresponding `times`.
+
+    :param sigma_reflectance:
+        Single value or array of 1-sigma uncertainties on reflectance measurements.
+
+    :param nside: (optional)
+        Resolution of HEALPix surface map.  Has to be a power of 2.  The number
+        of pixels will be :math:`12 N_\mathrm{side}^2`.
+        (default: ``4``)
+
+    :param nside_illum: (optional):
+        Resolution of HEALPix illumination map, i.e., the "kernel" of
+        illumination that is integrated against the pixel map.
+        (default: ``16``)
+
+    :param map_parameterization: (optional):
+        Parameterization of surface map to use.  `pix` will parameterize the map with
+        values of each pixel; `alm` will parameterize the map in spherical harmonic coefficients.
+        (default: ``pix``)
+
+    """
+    def __init__(self, times, reflectance, sigma_reflectance, nside=4, nside_illum=16, map_parameterization='pix'):
         assert nside_illum >= nside, 'IlluminationMapPosterior: must have nside_illum >= nside'
 
-        self._times = times
-        self._intensity = intensity
-        self._sigma_intensity = sigma_intensity
+        self._map_parameterization = map_parameterization
+
+        self._times = np.array(times)
+        self._reflectance = np.array(reflectance)
+        self._sigma_reflectance = sigma_reflectance * np.ones_like(times)
         self._nside = nside
         self._nside_illum = nside_illum
 
-        self.fixed_params = None
+        self._fixed_params = {}
+
+    _param_names = ['log_error_scale', 'mu', 'log_sigma', 'logit_wn_rel_amp', 'logit_spatial_scale',
+                    'log_rotation_period', 'log_orbital_period',
+                    'logit_phi_orb', 'logit_cos_obl', 'logit_obl_orientation',
+                    'logit_cos_inc']
 
     @property
     def times(self):
         return self._times
 
     @property
-    def intensity(self):
-        return self._intensity
+    def ntimes(self):
+        return self.times.shape[0]
 
     @property
-    def sigma_intensity(self):
-        return self._sigma_intensity
+    def reflectance(self):
+        return self._reflectance
+
+    @property
+    def sigma_reflectance(self):
+        return self._sigma_reflectance
+
+    @property
+    def map_parameterization(self):
+        return self._map_parameterization
 
     @property
     def nside(self):
@@ -76,25 +122,34 @@ class IlluminationMapPosterior(object):
         return self.lmax
 
     @property
-    def nside_illum(self):
-        return self._nside_illum
-
-    @property
-    def ntimes(self):
-        return self.times.shape[0]
+    def nalms(self):
+        ncomplex = self.mmax * (2 * self.lmax + 1 - self.mmax) / 2 + self.lmax + 1
+        return int(2*ncomplex)
 
     @property
     def npix(self):
         return hp.nside2npix(self.nside)
 
     @property
+    def nmap_params(self):
+        if self.map_parameterization == 'pix':
+            return self.npix
+        elif self.map_parameterization == 'alm':
+            return self.nalms
+        else:
+            raise RuntimeError("Unrecognized map parameterization {}".format(self.map_parameterization))
+
+    @property
+    def nside_illum(self):
+        return self._nside_illum
+
+    @property
     def npix_illum(self):
         return hp.nside2npix(self.nside_illum)
 
-    _param_names = ['log_error_scale', 'mu', 'log_sigma', 'logit_wn_rel_amp', 'logit_spatial_scale',
-                    'log_rotation_period', 'log_orbital_period',
-                    'logit_phi_orb', 'logit_cos_obl', 'logit_phi_rot',
-                    'logit_cos_inc']
+    @property
+    def fixed_params(self):
+        return self._fixed_params
 
     @property
     def full_dtype(self):
@@ -102,55 +157,39 @@ class IlluminationMapPosterior(object):
 
     @property
     def dtype(self):
-        if self.fixed_params is None:
-            return self.full_dtype
-        else:
-            dt = self.full_dtype
-            free_dt = [(param, dt[param]) for param in dt.names
-                       if param not in self.fixed_params]
+        dt = self.full_dtype
+        free_dt = [(param, dt[param]) for param in dt.names
+                   if param not in self.fixed_params]
 
-            return np.dtype(free_dt)
+        return np.dtype(free_dt)
 
     @property
     def dtype_map(self):
-        if self.fixed_params is None:
-            return self.full_dtype_map
-
-        else:
-            dt = self.full_dtype_map
-            free_dt = [(param, dt[param]) for param in dt.names
-                       if param not in self.fixed_params]
-
-            typel = [(n, np.float) for n in self._param_names
-                     if n not in self.fixed_params and 'map' not in n]
-
-        typel.append(('map', np.float, self.npix))
+        typel = [(param, self.dtype[param]) for param in self.dtype.names]
+        typel.append(('map', np.float, self.nmap_params))
         return np.dtype(typel)
 
     @property
     def full_dtype_map(self):
-        typel = [(n, np.float) for n in self._param_names]
-        typel.append(('map', np.float, self.npix))
+        typel = [(n, self.full_dtype[n]) for n in self.full_dtype.names]
+        typel.append(('map', np.float, self.nmap_params))
         return np.dtype(typel)
 
     @property
     def nparams_full(self):
-        return 11
+        return len(self.full_dtype)
 
     @property
     def nparams(self):
-        if self.fixed_params is None:
-            return self.nparams_full
-        else:
-            return self.nparams_full - len(self.fixed_params)
+        return len(self.dtype)
 
     @property
     def nparams_full_map(self):
-        return self.nparams_full + self.npix
+        return self.nparams_full + self.nmap_params
 
     @property
     def nparams_map(self):
-        return self.nparams + self.npix
+        return self.nparams + self.nmap_params
 
     @property
     def wn_low(self):
@@ -201,8 +240,8 @@ class IlluminationMapPosterior(object):
     def obl(self, p):
         return np.arccos(self.cos_obl(p))
 
-    def phi_rot(self, p):
-        return inv_logit(self.to_params(p)['logit_phi_rot'], low=0, high=2*np.pi)
+    def obl_orientation(self, p):
+        return inv_logit(self.to_params(p)['logit_obl_orientation'], low=0, high=2*np.pi)
 
     def cos_inc(self, p):
         return inv_logit(self.to_params(p)['logit_cos_inc'], low=0, high=1)
@@ -217,7 +256,7 @@ class IlluminationMapPosterior(object):
                        'spatial_scale': (self.spatial_scale_low, self.spatial_scale_high),
                        'phi_orb': (0, 2*np.pi),
                        'cos_obl': (0, 1),
-                       'phi_rot': (0, 2*np.pi),
+                       'obl_orientation': (0, 2*np.pi),
                        'cos_inc': (0, 1)}
         log_names = set(['err_scale', 'sigma', 'rotation_period', 'orbital_period'])
 
@@ -232,13 +271,40 @@ class IlluminationMapPosterior(object):
 
         return p
 
-    def unfix_params(self):
-        self.fixed_params = None
+    def fix_params(self, params):
+        """
+        Fix parameters to the specified values and remove them from the Posterior's `dtype`.
 
-    def fix_params(self, fixed_params):
-        self.fixed_params = fixed_params
+        Args:
+            params (dict): A dictionary of parameters to fix, and the
+                values to fix them to.
+
+        """
+        self._fixed_params.update(params)
+
+    def unfix_params(self, params=None):
+        """
+        Let fixed parameters vary.
+
+        Args:
+            params (iterable): A list of parameters to unfix.  If ``None``, all
+            parameters will be allowed to vary.
+            (default: ``None``)
+
+        """
+        if params is None:
+            self._fixed_params = {}
+        else:
+            for p in params:
+                try:
+                    self._fixed_params.pop(p)
+                except KeyError:
+                    continue
 
     def to_params(self, p):
+        """
+        Return a typed version of ndarray `p`.
+        """
         if isinstance(p, np.ndarray):
             if p.dtype == self.full_dtype or p.dtype == self.full_dtype_map:
                 return p.squeeze()
@@ -300,70 +366,82 @@ class IlluminationMapPosterior(object):
                          low=self.wn_low,
                          high=self.wn_high)
 
-    # This is the key function that produces the "kernel" of
-    # illumination that is integrated against the pixel map.  Here is
-    # the logic:
-    #
-    # The kernel is composed of a product of cosines: the illumination
-    # is proportional to n*n_s, where n is the pixel normal and n_s is
-    # the vector to the star.  The visibility is proportional to
-    # n*n_o, where n_o is the vector to the observer.  The
-    # contribution of any pixel of value p to the lightcurve is
-    # therefore p*(n*n_s)*(n*n_o) if both n*n_s and n*n_o are > 0, and
-    # zero otherwise.  So, we need to evaluate these dot products.
-    #
-    # Fix a coordinate system in which to evaluate these dot products
-    # as follows:
-    #
-    # The orbit is in the x-y plane (so L ~ z), with the x-axis
-    # pointing along superior conjunction.  The observer is therefore
-    # in the x-z plane, and has an inclination angle i in [0, pi/2] to
-    # the orbital plane.  So n_o = (-sin(i), 0, cos(i)).
-    #
-    # The planet star vector, n_s, is given by n_s = (-sin(xi),
-    # -cos(xi), 0), where xi is the orbital phase.  If the orbit has
-    # phase xi0 at t = 0, then n_s = R_z(2*pi/Porb*t + xi0)*(-1,0,0).
-    #
-    # For the normal vector to the planet, we must describe the series
-    # of rotations that maps the orbital coordinate system into the
-    # planet-centred coordinate system.  Imagine that the planet spin
-    # axis is at first aligned with the z-axis.  We apply R_y(obl),
-    # where obl is the obliquity angle in [0, pi/2], and then
-    # R_z(phi_rot), where phi_rot is the azimuthal angle of the
-    # planet's spin axis in [0, 2*pi].  Now the planet's spin axis
-    # points to S = (cos(phi_rot)*sin(obl), sin(phi_rot)*sin(obl),
-    # cos(obl)).  At time t, the planet's normals are given by n(t) =
-    # R_S(2*pi/Prot*t)*n(0), where n(0) = R_z(phi_rot)*R_y(obl)*n,
-    # with n the body-centred normals to the pixels.  We can now
-    # evaluate dot products in the fixed orbital frame.
-    #
-    # In principle, we are done, but there is an efficiency
-    # consideration.  For each time at which we have an observation,
-    # we need to perform rotations on the various vectors in the
-    # problem.  There are, in general, a large number of n vectors (we
-    # have many pixels covering the planet's surface), but only one
-    # n_o and n_s vector.  It will be more efficient to apply
-    # rotations only to the n_o and n_s vectors instead of rotating
-    # the many, many, n vectors.  (This is equivalent to performing
-    # the dot products in the planet-centred frame; we could have done
-    # that from the beginning, but it is easier to describe the
-    # geometry in the orbit-centred frame.)  We can accomplish this
-    # via a trick: when vectors in a dot product are rotated, the
-    # rotations can be moved from one vector to the other:
-    #
-    # (R_A*a)*(R_B*b) = < R_A * a | R_B * b > = < R_B^-1 R_A * a | b > = < a | R_A^-1 R_B b >
-    #
-    # So, instead of rotating the normal vectors to the planet pixels by
-    #
-    # n(t) = R_S(omega_rot(t))*R_z(phi_rot)*R_y(obl)*n
-    #
-    # We can just rotate the vectors that are inner-producted with
-    # these vectors by
-    #
-    # R_inv = R_y(-obl)*R_z(-phi_rot)*R_S(-omega_rot)
-    #
-    # The code below should be implementing this.
     def visibility_illumination_matrix(self, p):
+        r"""Produce the "kernel" of illumination that is integrated against the pixel map.
+
+        Args:
+            p (ndarray):
+
+        The kernel is composed of a product of cosines: the illumination is
+        proportional to :math:`\vec{n} \cdot \vec{n_s}`, where :math:`\vec{n}`
+        is the pixel normal and :math:`\vec{n_s}` is the vector to the star.
+        The visibility is proportional to :math:`\vec{n} \cdot \vec{n_o}`,
+        where :math:`\vec{n_o}` is the vector to the observer.  The
+        contribution of any pixel of value `p` to the lightcurve is therefore
+        :math:`p (\vec{n} \cdot \vec{n_s}) (\vec{n} \cdot \vec{n_o})` if both
+        :math:`\vec{n} \cdot \vec{n_s}` and :math:`\vec{n} \cdot \vec{n_o}` are
+        > 0, and zero otherwise.  So, we need to evaluate these dot products.
+
+        Fix a coordinate system in which to evaluate these dot products
+        as follows:
+
+        The orbit is in the x-y plane (so :math:`\hat{L} \parallel \hat{z}`),
+        with the x-axis pointing along superior conjunction.  The observer is
+        therefore in the x-z plane, and has an inclination angle :math:`\iota`
+        in :math:`[0, \pi/2]` to the orbital plane.  So :math:`\vec{n_o} =
+        (-\sin(\iota), 0, \cos(\iota))`.
+
+        The planet star vector, :math:`\vec{n_s}`, is given by :math:`\vec{n_s} =
+        (-\sin(x_i), -\cos(x_i), 0)`, where :math:`x_i` is the orbital phase.  If
+        the orbit has phase :math:`x_{i0}` at `t = 0`, then
+        :math:`n_s = R_z(2\pi/P_\mathrm{orb}t + x_{i0}) \cdot (-1,0,0)`.
+
+        For the normal vector to the planet, we must describe the series of
+        rotations that maps the orbital coordinate system into the planet-centred
+        coordinate system.  Imagine that the planet spin axis is at first aligned
+        with the z-axis.  We apply :math:`R_y(\mathrm{obl})`, where `obl` is the
+        obliquity angle in :math:`[0, \pi/2]`, and then
+        :math:`R_z(\phi_\mathrm{rot})`, where :math:`\phi_\mathrm{rot}` is the
+        azimuthal angle of the planet's spin axis in :math:`[0, 2\pi]`.  Now the
+        planet's spin axis points to :math:`S =
+        (\cos(\phi_\mathrm{rot})*\sin(\mathrm{obl}),
+        \sin(\phi_\mathrm{rot})*\sin(\mathrm{obl}), \cos(\mathrm{obl}))`.  At time
+        :math:`t`, the planet's normals are given by :math:`n(t) =
+        R_S(2\pi/P_\mathrm{rot} t) n(0)`, where :math:`n(0) =
+        R_z(\phi_\mathrm{rot}) R_y(\mathrm{obl}) n`, with `n` the body-centred
+        normals to the pixels.  We can now evaluate dot products in the fixed
+        orbital frame.
+
+        In principle, we are done, but there is an efficiency consideration.  For
+        each time at which we have an observation, we need to perform rotations on
+        the various vectors in the problem.  There are, in general, a large number
+        of n vectors (we have many pixels covering the planet's surface), but only
+        one n_o and n_s vector.  It will be more efficient to apply rotations only
+        to the n_o and n_s vectors instead of rotating the many, many, n vectors.
+        (This is equivalent to performing the dot products in the planet-centred
+        frame; we could have done that from the beginning, but it is easier to
+        describe the geometry in the orbit-centred frame.)  We can accomplish this
+        via a trick: when vectors in a dot product are rotated, the rotations can
+        be moved from one vector to the other:
+
+        .. math::
+
+            (R_A a) (R_B b) = < R_A a | R_B b > = < R_B^{-1} R_A a | b > = < a | R_A^{-1} R_B b >
+
+        So, instead of rotating the normal vectors to the planet pixels by
+
+        .. math::
+
+            n(t) = R_S(\omega_\mathrm{rot}(t)) R_z(\phi_\mathrm{rot}) R_y(\mathrm{obl}) n
+
+        We can just rotate the vectors that are inner-producted with these vectors by
+
+        .. math::
+
+            R_\mathrm{inv} = R_y(-\mathrm{obl}) R_z(-\phi_\mathrm{rot}) R_S(-\omega_\mathrm{rot})
+
+        """
+
         p = self.to_params(p)
 
         phi_orb = inv_logit(p['logit_phi_orb'], 0.0, 2.0*np.pi)
@@ -400,11 +478,10 @@ class IlluminationMapPosterior(object):
 
         return area * cos_factors/np.pi
 
-    #TODO: rename phi_rot to obl_orientation
     def analytic_visibility_illumination_matrix(self, p):
         omega_rot = 2.0*np.pi/self.rotation_period(p)
         obl = self.obl(p)
-        obl_orientation = self.phi_rot(p)
+        obl_orientation = self.obl_orientation(p)
         omega_orb = 2.0*np.pi/self.orbital_period(p)
         phi_orb = self.phi_orb(p)
         inc = self.inc(p)
@@ -431,16 +508,16 @@ class IlluminationMapPosterior(object):
         sin_obl = np.sqrt(1.0 - cos_obl*cos_obl)
         obl = np.arccos(cos_obl)
 
-        phi_rot = inv_logit(p['logit_phi_rot'], 0.0, 2.0*np.pi)
-        cos_phi_rot = np.cos(phi_rot)
-        sin_phi_rot = np.sin(phi_rot)
+        obl_orientation = inv_logit(p['logit_obl_orientation'], 0.0, 2.0*np.pi)
+        cos_obl_orientation = np.cos(obl_orientation)
+        sin_obl_orientation = np.sin(obl_orientation)
 
         omega_rot = 2.0*np.pi/np.exp(p['log_rotation_period'])
 
-        S = np.array([cos_phi_rot*sin_obl, sin_phi_rot*sin_obl, cos_obl])
+        S = np.array([cos_obl_orientation*sin_obl, sin_obl_orientation*sin_obl, cos_obl])
 
         spin_rot_quat = quaternion_multiply(rotation_quaternions(np.array([0.0, 1.0, 0.0]), -obl), \
-                                            rotation_quaternions(np.array([0.0, 0.0, 1.0]), -phi_rot))
+                                            rotation_quaternions(np.array([0.0, 0.0, 1.0]), -obl_orientation))
 
         rot_quats = rotation_quaternions(S, -omega_rot*times)
 
@@ -456,7 +533,6 @@ class IlluminationMapPosterior(object):
 
     def resolved_visibility_illumination_matrix(self, p):
         V = self.visibility_illumination_matrix(p)
-        #V = self.analytic_visibility_illumination_matrix(p)
 
         assert self.nside_illum >= self.nside, 'resolution mismatch: nside > nside_illum'
 
@@ -495,7 +571,7 @@ class IlluminationMapPosterior(object):
 
         lp += flat_logit_log_prior(p['logit_phi_orb'], low=0, high=2*np.pi)
         lp += flat_logit_log_prior(p['logit_cos_obl'], low=0, high=1)
-        lp += flat_logit_log_prior(p['logit_phi_rot'], low=0, high=2*np.pi)
+        lp += flat_logit_log_prior(p['logit_obl_orientation'], low=0, high=2*np.pi)
         lp += flat_logit_log_prior(p['logit_cos_inc'], low=0, high=1)
 
         return lp
@@ -527,13 +603,20 @@ class IlluminationMapPosterior(object):
 
     def data_sigma_matrix(self, inv=False):
         if not inv:
-            return np.diag(np.square(self.sigma_intensity))
+            return np.diag(np.square(self.sigma_reflectance))
         else:
-            return np.diag(1.0/np.square(self.sigma_intensity))
+            return np.diag(1.0/np.square(self.sigma_reflectance))
 
     def hpmap(self, p):
         p = self.to_params(p)
-        return p['map']
+
+        if self.map_parameterization == 'pix':
+            return p['map']
+        elif self.map_parameterization == 'alm':
+            complex_alms = p['map'][:self.nmap_params//2] + 1j*p['map'][self.nmap_params//2:]
+            return hp.alm2map(complex_alms, self.nside, lmax=self.lmax, mmax=self.mmax, verbose=False)
+        else:
+            raise RuntimeError("Unrecognized map parameterization {}".format(self.map_parameterization))
 
     def lightcurve(self, p):
         p = self.to_params(p)
@@ -566,8 +649,8 @@ class IlluminationMapPosterior(object):
 
         map_lc = np.dot(V, self.hpmap(p))
 
-        residual = self.intensity - map_lc
-        sigmas = self.sigma_intensity
+        residual = self.reflectance - map_lc
+        sigmas = self.sigma_reflectance
 
         chi2 = np.sum(np.square(residual/(errsc*sigmas)))
 
@@ -600,6 +683,8 @@ class IlluminationMapPosterior(object):
 
         return np.pi/2.0-colats, longs
 
+
+# Define separate prior and likelihood classes; useful for parallel-tempered MCMC
 class IlluminationMapPrior(IlluminationMapPosterior):
     def __init__(self, *args, **kwargs):
         super(IlluminationMapPrior, self).__init__(*args, **kwargs)
