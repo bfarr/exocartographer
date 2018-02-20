@@ -56,17 +56,17 @@ def projector(map, map_min=0, map_max=1, view='orth', cmap='gray', flip='geo', t
 
     :param map: Array to plot as a healpy map.
 
-    :param view: (Optional) The type of projection (e.g. 'orth', 'moll', etc.)
+    :param view: (optional) The type of projection (e.g. 'orth', 'moll', etc.)
 
-    :param cmap: (Optional) Color map to pass to healpy.
+    :param cmap: (optional) Color map to pass to healpy.
 
-    :param flip: (Optional) Plot on the sphere or on the sky (sphere by default).
+    :param flip: (optional) Plot on the sphere or on the sky (sphere by default).
 
-    :param title: (Optional) Title for the plot.
+    :param title: (optional) Title for the plot.
 
-    :param map_min: (Optional) Minimum value ``min(map)`` by default.
+    :param map_min: (optional) Minimum value ``min(map)`` by default.
 
-    :param map_max: (Optional) Maximum value ``max(map)`` by default.
+    :param map_max: (optional) Maximum value ``max(map)`` by default.
 
     :param kwargs: Passed to the healpy viewer.
     """
@@ -125,7 +125,44 @@ def draw_pos_maps(logpost, pbest, proj='orth', show=True, nmaps=None, fignum=1):
     return maps
 
 
-def maximize(logpost, p0, method='powell', ftol=0.01, view='orth', lookback=5, epoch_starts=None, epoch_duration=np.inf, **kwargs):
+def maximize(logpost, p0, method='hybrid', ftol=0.01, view='orth', lookback=5,
+             epoch_starts=None, epoch_duration=np.inf, **kwargs):
+    """Convenient function for maximizing the posterior probability density
+    with a useful callback for visualizing progress in realtime.  Given the
+    complexity of the problem, this is very unlikely to be the global maximum,
+    but often times it's still enlightning, and useful for generating starting
+    values for MCMC.
+
+    :param p0:
+        Starting point for the maximization.
+
+    :param method: (optional)
+        Method for `scipy.optimize.minimize`.  Defaults to sequentially running
+        `BFGS` and `Powell`.
+
+    :param ftol: (optional)
+        `ftol` for `scipy.optimize.minimize`.
+        (default: ``0.01``)
+
+    :param view: (optional)
+        The type of projection for the HEALPy map (e.g. 'orth', 'moll', etc.).
+        (Default: ``orth``)
+
+    :param lookback: (optional)
+        How far to look back for showing trends.
+        (Default: ``5``)
+
+    :param epoch_starts: (optional)
+        Start time of observational epochs, useful if there are gaps in observations.
+
+    :param epoch_duration: (optional)
+        Duration of observational epochs.
+
+    :param kwargs:
+        Passed to the `projector`.
+
+    """
+
     pbests = [p0]
 
     if ftol is None:
@@ -218,7 +255,11 @@ def maximize(logpost, p0, method='powell', ftol=0.01, view='orth', lookback=5, e
     cb(p0)
     try:
         func = lambda x: -logpost(x)
-        pbest = so.minimize(func, p0, method=method, callback=cb, options={'ftol':ftol}).x
+        if method == 'hybrid':
+            pbest = so.minimize(func, p0, method='BFGS', callback=cb, options={'ftol':ftol}).x
+            pbest = so.minimize(func, pbest, method='powell', callback=cb, options={'ftol':ftol}).x
+        else:
+            pbest = so.minimize(func, p0, method=method, callback=cb, options={'ftol':ftol}).x
     except KeyboardInterrupt:
         return pbests[-1]
 
