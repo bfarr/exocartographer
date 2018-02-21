@@ -51,7 +51,7 @@ def inline_ipynb():
 
     animation.Animation._repr_html_ = anim_to_html
 
-def projector(map, map_min=0, map_max=1, view='orth', cmap='gray', flip='geo', title="", **kwargs):
+def projector(map, map_min=0, map_max=1, view='moll', cmap='gray', flip='geo', title="", **kwargs):
     """Convenient function for plotting healpy projections.
 
     :param map: Array to plot as a healpy map.
@@ -91,7 +91,7 @@ def illuminate(logpost, params, map, map_min=0, map_max=1, fignum=1, **kwargs):
     plt.close(fig)
 
 
-def draw_pos_maps(logpost, pbest, proj='orth', show=True, nmaps=None, fignum=1):
+def draw_pos_maps(logpost, pbest, proj='moll', show=True, nmaps=None, fignum=1):
     """
         Draw a bunch of map realizations from `logpost`.  If `show` is ``True`` the maps will be
         shown as they're generated.  If `nmaps` is ``None``, an infinite number will be generated,
@@ -125,7 +125,7 @@ def draw_pos_maps(logpost, pbest, proj='orth', show=True, nmaps=None, fignum=1):
     return maps
 
 
-def maximize(logpost, p0, method='hybrid', ftol=0.01, view='orth', lookback=5,
+def maximize(logpost, p0, method='hybrid', ftol=0.01, view='moll', lookback=5,
              epoch_starts=None, epoch_duration=np.inf, **kwargs):
     """Convenient function for maximizing the posterior probability density
     with a useful callback for visualizing progress in realtime.  Given the
@@ -146,7 +146,7 @@ def maximize(logpost, p0, method='hybrid', ftol=0.01, view='orth', lookback=5,
 
     :param view: (optional)
         The type of projection for the HEALPy map (e.g. 'orth', 'moll', etc.).
-        (Default: ``orth``)
+        (Default: ``moll``)
 
     :param lookback: (optional)
         How far to look back for showing trends.
@@ -269,7 +269,7 @@ def maximize(logpost, p0, method='hybrid', ftol=0.01, view='orth', lookback=5,
     return pbest
 
 
-def sample(logpost, p0, ftol=None, view='orth', lookback=5, epoch_starts=None, epoch_duration=np.inf, nwalkers=1024, nskip=10, nsteps=100, **kwargs):
+def sample(logpost, p0, ftol=None, view='moll', lookback=5, epoch_starts=None, epoch_duration=np.inf, nwalkers=1024, nskip=10, nsteps=100, **kwargs):
     import emcee
     import kombine
 
@@ -389,7 +389,7 @@ def sample(logpost, p0, ftol=None, view='orth', lookback=5, epoch_starts=None, e
     return p
 
 ## DRY VIOLATION: copied from above.  Clean this up!
-def differential_evolution(logpost, bounds, view='orth', lookback=5):
+def differential_evolution(logpost, bounds, view='moll', lookback=5):
     pbests = []
 
     def cb(x, convergence=None):
