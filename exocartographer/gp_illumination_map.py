@@ -272,23 +272,20 @@ class IlluminationMapPosterior(object):
         return p
 
     def fix_params(self, params):
-        """
-        Fix parameters to the specified values and remove them from the Posterior's `dtype`.
+        """Fix parameters to the specified values and remove them from the
+        Posterior's `dtype`.
 
-        Args:
-            params (dict): A dictionary of parameters to fix, and the
-                values to fix them to.
+        :param params:
+            A dictionary of parameters to fix, and the values to fix them to.
 
         """
         self._fixed_params.update(params)
 
     def unfix_params(self, params=None):
-        """
-        Let fixed parameters vary.
+        """Let fixed parameters vary.
 
-        Args:
-            params (iterable): A list of parameters to unfix.  If ``None``, all
-            parameters will be allowed to vary.
+        :param params:
+            A list of parameters to unfix.  If ``None``, all parameters will be allowed to vary.
             (default: ``None``)
 
         """
@@ -369,8 +366,8 @@ class IlluminationMapPosterior(object):
     def visibility_illumination_matrix(self, p):
         r"""Produce the "kernel" of illumination that is integrated against the pixel map.
 
-        Args:
-            p (ndarray):
+        :param p:
+            Array of values for unfixed parameters.
 
         The kernel is composed of a product of cosines: the illumination is
         proportional to :math:`\vec{n} \cdot \vec{n_s}`, where :math:`\vec{n}`
@@ -426,7 +423,7 @@ class IlluminationMapPosterior(object):
 
         .. math::
 
-            (R_A a) (R_B b) = < R_A a | R_B b > = < R_B^{-1} R_A a | b > = < a | R_A^{-1} R_B b >
+            (R_A a) (R_B b) = \langle R_A a | R_B b \rangle = \langle R_B^{-1} R_A a | b \rangle = \langle a | R_A^{-1} R_B b \rangle
 
         So, instead of rotating the normal vectors to the planet pixels by
 

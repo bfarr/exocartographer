@@ -8,12 +8,11 @@ import scipy.linalg as sl
 import warnings
 
 def exp_cov(nside, wn_rel_amp, lambda_angular, nest=False):
-    """Returns a covariance function for a healpix map with ``nside``
-    using
+    r"""Returns a covariance function for a healpix map with ``nside``.
 
     .. math::
 
-      C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( -\frac{1}{2} \left(\frac{\theta_{ij}}{\lambda}\right)^2 \right)
+        C_{ij} = \left \langle p_i p_j \right\rangle = \exp\left( -\frac{1}{2} \left(\frac{\theta_{ij}}{\lambda}\right)^2 \right)
 
     where :math:`\theta_{ij}` is the great-circle angle between the
     :math:`i` and :math:`j` pixel centres.  
