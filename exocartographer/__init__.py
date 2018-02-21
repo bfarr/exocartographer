@@ -5,4 +5,4 @@ from . import toy_model
 from . import util
 from . import visualize
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
