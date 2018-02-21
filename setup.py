@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from os import path
+import re
+
 try:
     from setuptools import setup
 
