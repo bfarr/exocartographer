@@ -30,7 +30,7 @@ parameters, and generate synthetic light curve data.::
     # Draw a valid albedo map (i.e., 0 < albedo < 1)
     while True:
         simulated_map = draw_map(nside, albedo_mean, albedo_std,
-                                 wn_rel_amp, len_scale)
+                                 whitenoise_relative_amp, length_scale)
         if min(simulated_map) > 0 and max(simulated_map) < 1:
             break
 
@@ -89,7 +89,7 @@ User Guide
 
    installation
    exocartographer
-
+   light_curve_fitting.rst
 
 API Documentation
 ==================
