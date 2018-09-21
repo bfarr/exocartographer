@@ -35,6 +35,7 @@ parameters, and generate synthetic light curve data.::
             break
 
     hp.mollview(simulated_map, title='albedo', cmap='gist_gray')
+    plt.savefig('simulated_map.png')
 
 .. image:: _static/ex_sim_map.png
 
@@ -78,6 +79,7 @@ parameters, and generate synthetic light curve data.::
     plt.ylim(ymin=0)
     plt.xlabel(r'time$/P_\mathrm{rot}$')
     plt.ylabel('reflectance')
+    plt.savefig('lightcurve.png')
 
 .. image:: _static/ex_sim_lc.png
 
