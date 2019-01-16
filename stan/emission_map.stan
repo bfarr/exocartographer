@@ -1,22 +1,5 @@
 functions {
-  real map_flux(vector pix_map, vector[] pix_nhat, real t, real P, real cos_iota) {
-    real sin_iota = sqrt(1.0-cos_iota*cos_iota);
-    real omega = 2*pi()*t/P;
-    vector[3] nhat = to_vector({cos(omega)*sin_iota, sin(omega)*sin_iota, cos_iota});
-
-    int npix = num_elements(pix_map);
-
-    vector[npix] vis;
-
-    for (i in 1:npix) {
-      vis[i] = nhat'*pix_nhat[i];
-      if (vis[i] < 0) vis[i] = 0.0;
-    }
-
-    return vis'*pix_map;
-  }
-
-  vector visibility(vector[] pix_nhat, real t, real P, real cos_iota) {
+  vector visibility(vector[] pix_nhat, real pix_area, real t, real P, real cos_iota) {
     real sin_iota = sqrt(1.0-cos_iota*cos_iota);
     real omega = 2*pi()*t/P;
     vector[3] nhat = to_vector({cos(omega)*sin_iota, sin(omega)*sin_iota, cos_iota});
@@ -26,14 +9,14 @@ functions {
     vector[npix] vis;
 
     for (i in 1:npix) {
-      vis[i] = nhat'*pix_nhat[i];
+      vis[i] = pix_area*nhat'*pix_nhat[i];
       if (vis[i] < 0) vis[i] = 0.0;
     }
 
     return vis;
   }
 
-  matrix design_matrix(matrix sht_matrix, matrix trend_basis, vector[] pix_nhat, real[] times, real P, real cos_iota) {
+  matrix design_matrix(matrix sht_matrix, matrix trend_basis, vector[] pix_nhat, real pix_area, real[] times, real P, real cos_iota) {
     int npix = dims(sht_matrix)[1];
     int nalm = dims(sht_matrix)[2];
     int nobs = dims(trend_basis)[1];
@@ -109,6 +92,7 @@ data {
 
   matrix[npix, nalm] sht_matrix;
 
+  real pix_area;
   vector[3] pix_nhat[npix];
 
   real time[nobs];
@@ -172,7 +156,7 @@ model {
 
   /* Likelihood */
   {
-    matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, time, P, cos_iota);
+    matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
     vector[nobs+nalm+ntrend] mprec = measurement_precision(to_vector(sigma_flux), sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     matrix[nalm+ntrend, nalm+ntrend] precmat = precision_matrix(M, mprec);
@@ -193,7 +177,7 @@ generated quantities {
 
   {
     vector[ntrend] sigma_trend = rep_vector(1.0, ntrend);
-    matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, time, P, cos_iota);
+    matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
     vector[nobs+nalm+ntrend] mprec = measurement_precision(to_vector(sigma_flux), sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     matrix[nalm+ntrend, nalm+ntrend] precmat = precision_matrix(M, mprec);
