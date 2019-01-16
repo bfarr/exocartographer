@@ -25,7 +25,7 @@ functions {
     matrix [nobs+nalm+ntrend, nalm+ntrend] M = rep_matrix(0.0, nobs+nalm+ntrend, nalm+ntrend);
 
     for (i in 1:nobs) {
-      vector[npix] vis = visibility(pix_nhat, times[i], P, cos_iota);
+      vector[npix] vis = visibility(pix_nhat, pix_area, times[i], P, cos_iota);
       M[i, 1:nalm] = vis'*sht_matrix;
       M[i, nalm+1:] = trend_basis[i,:];
     }
