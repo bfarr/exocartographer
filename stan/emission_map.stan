@@ -44,6 +44,12 @@ data {
 
   real cos_iota_min;
   real cos_iota_max;
+
+  vector[nalm] map_mu;
+  vector[nalm] map_sigma;
+
+  vector[ntrend] trend_mu;
+  vector[ntrend] trend_sigma;
 }
 
 parameters {
@@ -53,9 +59,14 @@ parameters {
   real<lower=cos_iota_min,upper=cos_iota_max> cos_iota; /* cosine(inclination) */
   real<lower=Pmin, upper=Pmax> P; /* Rotation period. */
 
-  vector[nalm] map; /* flux from each pixel (can be negative because added to trend to generate observed flux.) */
+  vector[nalm] dmap; /* flux from each Ylm (can be negative because added to trend to generate observed flux.) */
 
-  vector[ntrend] c_trend;
+  vector[ntrend] dtrend;
+}
+
+transformed parameters {
+  vector[nalm] map = map_mu + map_sigma .* dmap;
+  vector[ntrend] c_trend = trend_mu + trend_sigma .* dtrend;
 }
 
 model {
