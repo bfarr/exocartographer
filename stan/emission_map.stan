@@ -73,10 +73,21 @@ model {
   /* Flat prior on mu */
 
   /* Log-normal prior on sigma. */
-  sigma ~ lognormal(0,1);
+  sigma ~ normal(0,1);
 
   /* Log-normal prior on lambda. */
-  lambda ~ lognormal(0,1);
+  {
+    /* The choice here is to put l = 1 and l = lmax at the +/- 2-sigma
+       boundaries in the log-normal for lambda, since too-small lambdas and
+       too-large lambdas lead to divergences */
+    real mu_logl;
+    real sigma_logl;
+
+    mu_logl = 0.5*(log(lmax) + log(1));
+    sigma_logl = 0.25*(log(lmax) - log(1));
+
+    lambda ~ lognormal(mu_logl, sigma_logl);
+  }
 
   /* Flat prior on cos-theta. */
   /* Flat prior on period. */
