@@ -186,6 +186,7 @@ model {
 }
 
 generated quantities {
+  vector[nalm] alm_map;
   vector[npix] pix_map;
   vector[nobs] trend;
   vector[nobs] lightcurve;
@@ -202,7 +203,6 @@ generated quantities {
 
     vector[nalm+ntrend] udraw;
     vector[nalm+ntrend] draw;
-    vector[nalm] alm_draw;
     vector[ntrend] trend_draw;
 
     for (i in 1:nalm+ntrend) {
@@ -210,9 +210,9 @@ generated quantities {
     }
 
     draw = best_fit + mdivide_right_tri_low(udraw', Lprecmat)';
-    alm_draw = draw[1:nalm];
+    alm_map = draw[1:nalm];
     trend_draw = draw[nalm+1:];
-    pix_map = sht_matrix*alm_draw;
+    pix_map = sht_matrix*alm_map;
     trend = trend_basis*trend_draw;
     lightcurve = (M*draw)[1:nobs];
   }
