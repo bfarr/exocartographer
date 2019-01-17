@@ -107,16 +107,13 @@ data {
   real Pmax;
   real mu_P;
   real sigma_P;
-
-  real cos_iota_min;
-  real cos_iota_max;
 }
 
 parameters {
   real<lower=0> sigma; /* Overall scatter in log-flux. */
   real<lower=0.1, upper=2*lmax> lambda; /* Scale (in l-space) of correlations. */
 
-  real<lower=cos_iota_min,upper=cos_iota_max> cos_iota; /* cosine(inclination) */
+  real<lower=0,upper=1> cos_iota; /* cosine(inclination) */
   real<lower=Pmin, upper=Pmax> P; /* Rotation period. */
 
   real<lower=0.1, upper=10.0> nu; /* Errorbar scaling. */
