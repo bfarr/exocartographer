@@ -170,7 +170,7 @@ model {
     vector[nobs+nalm+ntrend] resid = meas - M*best_fit;
 
     target += -0.5*sum(resid .* mprec .* resid);
-    target += -0.5*log_determinant(precmat);
+    target += -sum(log(nu*to_vector(sigma_flux))) - sum(log(sqrt_Cl)) - sum(log(sigma_trend)) - 0.5*log_determinant(precmat);
   }
 }
 
