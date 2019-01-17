@@ -118,6 +118,8 @@ parameters {
 
   real<lower=cos_iota_min,upper=cos_iota_max> cos_iota; /* cosine(inclination) */
   real<lower=Pmin, upper=Pmax> P; /* Rotation period. */
+
+  real<lower=0.1, upper=10.0> nu; /* Errorbar scaling. */
 }
 
 transformed parameters {
@@ -154,10 +156,13 @@ model {
   /* Flat prior on cos-theta. */
   P ~ normal(mu_P, sigma_P);
 
+  /* Errorbar scaling. */
+  nu ~ lognormal(0.0, 1.0);
+
   /* Likelihood */
   {
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] mprec = measurement_precision(to_vector(sigma_flux), sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] mprec = measurement_precision(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     matrix[nalm+ntrend, nalm+ntrend] precmat = precision_matrix(M, mprec);
     vector[nalm+ntrend] best_fit = best_fit_alm_trend(precmat, M, mprec, meas);
@@ -178,7 +183,7 @@ generated quantities {
   {
     vector[ntrend] sigma_trend = rep_vector(1.0, ntrend);
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] mprec = measurement_precision(to_vector(sigma_flux), sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] mprec = measurement_precision(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     matrix[nalm+ntrend, nalm+ntrend] precmat = precision_matrix(M, mprec);
     vector[nalm+ntrend] best_fit = best_fit_alm_trend(precmat, M, mprec, meas);
