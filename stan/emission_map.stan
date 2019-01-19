@@ -43,16 +43,16 @@ functions {
     return M;
   }
 
-  vector measurement_precision(vector flux_error, vector sqrt_C_l, vector sigma_trend) {
+  vector measurement_invsigma(vector flux_error, vector sqrt_C_l, vector sigma_trend) {
     int nobs = num_elements(flux_error);
     int nalm = num_elements(sqrt_C_l);
     int ntrend = num_elements(sigma_trend);
 
     vector[nobs+nalm+ntrend] mprec;
 
-    mprec[1:nobs] = 1.0 ./ (flux_error .* flux_error);
-    mprec[nobs+1:nobs+nalm] = 1.0 ./ (sqrt_C_l .* sqrt_C_l);
-    mprec[nobs+nalm+1:] = 1.0 ./ (sigma_trend .* sigma_trend);
+    mprec[1:nobs] = 1.0 ./ flux_error;
+    mprec[nobs+1:nobs+nalm] = 1.0 ./ sqrt_C_l;
+    mprec[nobs+nalm+1:] = 1.0 ./ sigma_trend;
 
     return mprec;
   }
@@ -69,14 +69,6 @@ functions {
     meas[nobs+nalm+1:] = trend_mean;
 
     return meas;
-  }
-
-  matrix precision_matrix(matrix design_matrix, vector measurement_precision) {
-    return design_matrix' * diag_pre_multiply(measurement_precision, design_matrix);
-  }
-
-  vector best_fit_alm_trend(matrix precision_matrix, matrix design_matrix, vector measurement_precision, vector measurements) {
-    return mdivide_left_spd(precision_matrix, design_matrix' * (measurement_precision .* measurements));
   }
 }
 
@@ -161,15 +153,18 @@ model {
   /* Likelihood */
   {
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] mprec = measurement_precision(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
-    matrix[nalm+ntrend, nalm+ntrend] precmat = precision_matrix(M, mprec);
-    vector[nalm+ntrend] best_fit = best_fit_alm_trend(precmat, M, mprec, meas);
+    vector[nobs+nalm+ntrend] scaled_meas = meas .* msigma;
+    matrix[nobs+nalm+ntrend, nalm+ntrend] scaled_M = diag_pre_multiply(msigma, M);
+    matrix[nobs+nalm+ntrend, nalm+ntrend] sm_Q = qr_thin_Q(scaled_M);
+    matrix[nalm+ntrend, nalm+ntrend] sm_R = qr_thin_R(scaled_M);
+    vector[nalm+ntrend] best_fit = mdivide_right_tri_low(scaled_meas' * sm_Q, sm_R')';
 
     vector[nobs+nalm+ntrend] resid = meas - M*best_fit;
 
-    target += -0.5*sum(resid .* mprec .* resid);
-    target += -sum(log(nu*to_vector(sigma_flux))) - sum(log(sqrt_Cl)) - sum(log(sigma_trend)) - 0.5*log_determinant(precmat);
+    target += -0.5*sum(resid .* msigma .* msigma .* resid);
+    target += -sum(log(nu*to_vector(sigma_flux))) - sum(log(sqrt_Cl)) - sum(log(sigma_trend)) - sum(log(diagonal(sm_R)));
   }
 }
 
@@ -182,12 +177,13 @@ generated quantities {
   {
     vector[ntrend] sigma_trend = rep_vector(1.0, ntrend);
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] mprec = measurement_precision(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
-    matrix[nalm+ntrend, nalm+ntrend] precmat = precision_matrix(M, mprec);
-    vector[nalm+ntrend] best_fit = best_fit_alm_trend(precmat, M, mprec, meas);
-
-    matrix[nalm+ntrend, nalm+ntrend] Lprecmat = cholesky_decompose(precmat);
+    vector[nobs+nalm+ntrend] scaled_meas = meas .* msigma;
+    matrix[nobs+nalm+ntrend, nalm+ntrend] scaled_M = diag_pre_multiply(msigma, M);
+    matrix[nobs+nalm+ntrend, nalm+ntrend] sm_Q = qr_thin_Q(scaled_M);
+    matrix[nalm+ntrend, nalm+ntrend] sm_R = qr_thin_R(scaled_M);
+    vector[nalm+ntrend] best_fit = mdivide_right_tri_low(scaled_meas' * sm_Q, sm_R')';
 
     vector[nalm+ntrend] udraw;
     vector[nalm+ntrend] draw;
@@ -197,7 +193,7 @@ generated quantities {
       udraw[i] = normal_rng(0, 1);
     }
 
-    draw = best_fit + mdivide_right_tri_low(udraw', Lprecmat)';
+    draw = best_fit + mdivide_right_tri_low(udraw', sm_R')';
     alm_map = draw[1:nalm];
     trend_draw = draw[nalm+1:];
     pix_map = sht_matrix*alm_map;
