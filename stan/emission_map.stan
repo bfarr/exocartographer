@@ -124,7 +124,9 @@ transformed parameters {
   vector[nalm] sqrt_Cl;
 
   for (i in 1:nalm) {
-    sqrt_Cl[i] = sigma*exp(-l_alm[i]*l_alm[i]/(4.0*lambda*lambda));
+    /* The 0.01/(2*l_alm[i]+1) gives a 1% white noise amplitude in each l mode,
+    /* and should make the GP much more stable. */
+    sqrt_Cl[i] = sigma*(exp(-l_alm[i]*l_alm[i]/(4.0*lambda*lambda)) + 0.01/(2*l_alm[i]+1));
   }
 }
 
