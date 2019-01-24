@@ -43,14 +43,14 @@ functions {
     return M;
   }
 
-  vector measurement_invsigma(vector flux_error, vector sqrt_C_l, vector sigma_trend) {
+  vector measurement_invsigma(real sigma_jit, vector sqrt_C_l, vector sigma_trend) {
     int nobs = num_elements(flux_error);
     int nalm = num_elements(sqrt_C_l);
     int ntrend = num_elements(sigma_trend);
 
     vector[nobs+nalm+ntrend] mprec;
 
-    mprec[1:nobs] = 1.0 ./ flux_error;
+    mprec[1:nobs] = rep_vector(1.0/sigma_jit, nobs);
     mprec[nobs+1:nobs+nalm] = 1.0 ./ sqrt_C_l;
     mprec[nobs+nalm+1:] = 1.0 ./ sigma_trend;
 
@@ -89,7 +89,6 @@ data {
 
   real time[nobs];
   real flux[nobs];
-  real sigma_flux[nobs];
 
   matrix[nobs, ntrend] trend_basis;
 
@@ -108,7 +107,7 @@ parameters {
   real<lower=0,upper=1> cos_iota; /* cosine(inclination) */
   real<lower=Pmin, upper=Pmax> P; /* Rotation period. */
 
-  real<lower=0.1, upper=10.0> nu; /* Errorbar scaling. */
+  real<lower=0> sigma_jit;
 }
 
 transformed parameters {
@@ -145,15 +144,16 @@ model {
   }
 
   /* Flat prior on cos-theta. */
+
   P ~ normal(mu_P, sigma_P);
 
-  /* Errorbar scaling. */
-  nu ~ lognormal(0.0, 1.0);
+  /* Weak prior on sigma_jit */
+  sigma_jit ~ normal(0.0, 1.0);
 
   /* Likelihood */
   {
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(sigma_jit, sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     vector[nobs+nalm+ntrend] scaled_meas = meas .* msigma;
     matrix[nobs+nalm+ntrend, nalm+ntrend] scaled_M = diag_pre_multiply(msigma, M);
@@ -177,7 +177,7 @@ generated quantities {
   {
     vector[ntrend] sigma_trend = rep_vector(1.0, ntrend);
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(nu*to_vector(sigma_flux), sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(sigma_jit, sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     vector[nobs+nalm+ntrend] scaled_meas = meas .* msigma;
     matrix[nobs+nalm+ntrend, nalm+ntrend] scaled_M = diag_pre_multiply(msigma, M);
