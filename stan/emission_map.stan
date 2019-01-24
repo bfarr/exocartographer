@@ -1,7 +1,7 @@
 functions {
   vector visibility(vector[] pix_nhat, real pix_area, real t, real P, real cos_iota) {
     real sin_iota = sqrt(1.0-cos_iota*cos_iota);
-    real omega = 2*pi()*t/P;
+    real omega = -2*pi()*t/P;
     vector[3] nhat = to_vector({cos(omega)*sin_iota, sin(omega)*sin_iota, cos_iota});
 
     int npix = size(pix_nhat);
