@@ -43,8 +43,7 @@ functions {
     return M;
   }
 
-  vector measurement_invsigma(real sigma_jit, vector sqrt_C_l, vector sigma_trend) {
-    int nobs = num_elements(flux_error);
+  vector measurement_invsigma(real sigma_jit, int nobs, vector sqrt_C_l, vector sigma_trend) {
     int nalm = num_elements(sqrt_C_l);
     int ntrend = num_elements(sigma_trend);
 
@@ -153,7 +152,7 @@ model {
   /* Likelihood */
   {
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(sigma_jit, sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(sigma_jit, nobs, sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     vector[nobs+nalm+ntrend] scaled_meas = meas .* msigma;
     matrix[nobs+nalm+ntrend, nalm+ntrend] scaled_M = diag_pre_multiply(msigma, M);
@@ -177,7 +176,7 @@ generated quantities {
   {
     vector[ntrend] sigma_trend = rep_vector(1.0, ntrend);
     matrix[nobs+nalm+ntrend, nalm+ntrend] M = design_matrix(sht_matrix, trend_basis, pix_nhat, pix_area, time, P, cos_iota);
-    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(sigma_jit, sqrt_Cl, sigma_trend);
+    vector[nobs+nalm+ntrend] msigma = measurement_invsigma(sigma_jit, nobs, sqrt_Cl, sigma_trend);
     vector[nobs+nalm+ntrend] meas = measurements(to_vector(flux), rep_vector(0.0, nalm), rep_vector(0.0, ntrend));
     vector[nobs+nalm+ntrend] scaled_meas = meas .* msigma;
     matrix[nobs+nalm+ntrend, nalm+ntrend] scaled_M = diag_pre_multiply(msigma, M);
