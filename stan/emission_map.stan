@@ -163,7 +163,7 @@ model {
     vector[nobs+nalm+ntrend] resid = meas - M*best_fit;
 
     target += -0.5*sum(resid .* msigma .* msigma .* resid);
-    target += -sum(nobs*log(sigma_jit) - sum(log(sqrt_Cl)) - sum(log(sigma_trend)) - sum(log(diagonal(sm_R)));
+    target += -nobs*log(sigma_jit) - sum(log(sqrt_Cl)) - sum(log(sigma_trend)) - sum(log(diagonal(sm_R)));
   }
 }
 
